@@ -1,0 +1,26 @@
+{
+  "name": "updraft",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Brimble Take-Home - One-page deployment pipeline platform",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
+  },
+  "keywords": [
+    "deployment",
+    "pipeline",
+    "docker",
+    "railpack"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "prettier": "^3.2.5"
+  },
+  "packageManager": "pnpm@9.1.0"
+}
