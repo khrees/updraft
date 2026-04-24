@@ -7,9 +7,11 @@ import { handleError, BadRequestError, ConflictError } from '../lib/errors.js';
 import { subscribe } from '../sse/broker.js';
 import { getPipelineQueue } from '../pipeline/index.js';
 import { isTerminalDeploymentStatus } from '@updraft/shared-types';
-import { randomUUID } from 'node:crypto';
+import { customAlphabet } from 'nanoid';
 import path from 'node:path';
 import fs from 'node:fs';
+
+const nanoid = customAlphabet('abcdefghijklmnopqrstuvwxyz', 21);
 
 const UPLOAD_DIR = process.env['UPLOAD_DIR'] ?? path.join(process.cwd(), 'data', 'uploads');
 
@@ -27,9 +29,9 @@ export function createDeploymentsRouter(db: Database.Database, options: Deployme
   router.post('/', async (c) => {
     try {
       const contentType = c.req.header('content-type') ?? '';
-      const id = randomUUID();
-      let sourceType: 'git' | 'upload';
-      let sourceRef: string;
+      const id = nanoid();
+      let source_type: 'git' | 'upload';
+      let source_ref: string;
 
       if (contentType.includes('multipart/form-data')) {
         const form = await c.req.formData();
@@ -41,18 +43,18 @@ export function createDeploymentsRouter(db: Database.Database, options: Deployme
         const filename = `${id}-${archive.name}`;
         const dest = path.join(UPLOAD_DIR, filename);
         fs.writeFileSync(dest, Buffer.from(await archive.arrayBuffer()));
-        sourceType = 'upload';
-        sourceRef = filename;
+        source_type = 'upload';
+        source_ref = filename;
       } else {
         const body = await c.req.json().catch(() => { throw new BadRequestError('Request body must be valid JSON'); });
         const parsed = createDeploymentSchema.parse(body);
-        sourceType = parsed.gitUrl ? 'git' : 'upload';
-        sourceRef = (parsed.gitUrl ?? parsed.archiveRef)!;
+        source_type = parsed.git_url ? 'git' : 'upload';
+        source_ref = (parsed.git_url ?? parsed.archive_ref)!;
       }
 
-      const deployment = deployments.create({ sourceType, sourceRef });
+      const deployment = deployments.create({ source_type, source_ref });
       enqueue(deployment.id);
-      return c.json({ success: true, message: 'Deployment created', data: deployment }, 201);
+      return c.json({ success: true, message: `Deployment ${deployment.id} created and queued`, data: deployment }, 201);
     } catch (err) {
       return handleError(c, err);
     }
@@ -62,7 +64,7 @@ export function createDeploymentsRouter(db: Database.Database, options: Deployme
   router.get('/', (c) => {
     try {
       const list = deployments.list();
-      return c.json({ success: true, message: 'OK', data: list });
+      return c.json({ success: true, message: `${list.length} deployment(s) found`, data: list });
     } catch (err) {
       return handleError(c, err);
     }
@@ -73,7 +75,7 @@ export function createDeploymentsRouter(db: Database.Database, options: Deployme
     try {
       const deployment = deployments.getById(c.req.param('id'));
       if (!deployment) throw new DeploymentNotFoundError(c.req.param('id'));
-      return c.json({ success: true, message: 'OK', data: deployment });
+      return c.json({ success: true, message: `Deployment ${deployment.id} retrieved`, data: deployment });
     } catch (err) {
       return handleError(c, err);
     }
@@ -88,7 +90,7 @@ export function createDeploymentsRouter(db: Database.Database, options: Deployme
         throw new ConflictError(`Deployment is already in a terminal state: ${deployment.status}`);
       }
       const updated = deployments.updateStatus(deployment.id, 'cancelled');
-      return c.json({ success: true, message: 'Deployment cancelled', data: updated });
+      return c.json({ success: true, message: `Deployment ${updated.id} cancelled`, data: updated });
     } catch (err) {
       return handleError(c, err);
     }

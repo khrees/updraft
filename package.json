@@ -4,7 +4,7 @@
   "private": true,
   "description": "Brimble Take-Home - One-page deployment pipeline platform",
   "scripts": {
-    "dev": "pnpm -r --parallel dev",
+    "dev": "pnpm --filter @updraft/api dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",

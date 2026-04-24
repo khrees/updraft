@@ -32,11 +32,11 @@ function failingAcquirer(): SourceAcquirer {
   };
 }
 
-function fakeBuilder(imageTag = 'dep-x:1'): Builder {
+function fakeBuilder(image_tag = 'dep-x:1'): Builder {
   return {
     async build({ logger }) {
       await logger.log('built');
-      return { imageTag };
+      return { image_tag };
     },
   };
 }
@@ -55,11 +55,11 @@ describe('runPipeline', () => {
     db = freshDb();
   });
 
-  it('runs the happy path: status -> building, persists logs and imageTag', async () => {
+  it('runs the happy path: status -> building, persists logs and image_tag', async () => {
     const deployments = createDeploymentRepository(db);
     const logs = createLogRepository(db);
     const messages: SSEMessage[] = [];
-    const d = deployments.create({ sourceType: 'git', sourceRef: 'https://example.com/r.git' });
+    const d = deployments.create({ source_type: 'git', source_ref: 'https://example.com/r.git' });
 
     await runPipeline(d.id, {
       deployments,
@@ -73,7 +73,7 @@ describe('runPipeline', () => {
 
     const after = deployments.getById(d.id)!;
     expect(after.status).toBe('building');
-    expect(after.imageTag).toBe('dep-x:42');
+    expect(after.image_tag).toBe('dep-x:42');
 
     const events = logs.listByDeployment(d.id);
     expect(events.map((e) => e.message)).toEqual(
@@ -82,14 +82,14 @@ describe('runPipeline', () => {
     expect(events.map((e) => e.sequence)).toEqual([...events.map((e) => e.sequence)].sort((a, b) => a - b));
 
     const statusEvents = messages.filter((m) => m.type === 'status');
-    expect(statusEvents[0]).toEqual({ type: 'status', data: { deploymentId: d.id, status: 'building' } });
+    expect(statusEvents[0]).toEqual({ type: 'status', data: { deployment_id: d.id, status: 'building' } });
     expect(messages.filter((m) => m.type === 'log').length).toBeGreaterThanOrEqual(3);
   });
 
   it('marks deployment failed and emits status when source acquisition throws', async () => {
     const deployments = createDeploymentRepository(db);
     const logs = createLogRepository(db);
-    const d = deployments.create({ sourceType: 'git', sourceRef: 'https://example.com/r.git' });
+    const d = deployments.create({ source_type: 'git', source_ref: 'https://example.com/r.git' });
 
     await runPipeline(d.id, {
       deployments,
@@ -107,7 +107,7 @@ describe('runPipeline', () => {
   it('marks deployment failed when the builder throws', async () => {
     const deployments = createDeploymentRepository(db);
     const logs = createLogRepository(db);
-    const d = deployments.create({ sourceType: 'git', sourceRef: 'https://example.com/r.git' });
+    const d = deployments.create({ source_type: 'git', source_ref: 'https://example.com/r.git' });
 
     await runPipeline(d.id, {
       deployments,

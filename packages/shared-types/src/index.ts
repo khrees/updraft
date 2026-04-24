@@ -16,21 +16,21 @@ export type LogStage = 'build' | 'deploy' | 'system';
 // Core Deployment resource
 export interface Deployment {
   id: string;
-  sourceType: DeploymentSourceType;
-  sourceRef: string; // git URL or uploaded artifact ref
+  source_type: DeploymentSourceType;
+  source_ref: string;
   status: DeploymentStatus;
-  imageTag?: string;
-  containerId?: string;
-  routePath?: string;
-  liveUrl?: string;
-  createdAt: string; // ISO 8601
-  updatedAt: string; // ISO 8601
+  image_tag?: string;
+  container_id?: string;
+  route_path?: string;
+  live_url?: string;
+  created_at: string; // ISO 8601
+  updated_at: string; // ISO 8601
 }
 
 // Deployment log event
 export interface DeploymentLogEvent {
   id: string;
-  deploymentId: string;
+  deployment_id: string;
   stage: LogStage;
   message: string;
   timestamp: string; // ISO 8601
@@ -39,8 +39,8 @@ export interface DeploymentLogEvent {
 
 // API Request/Response types
 export interface CreateDeploymentRequest {
-  gitUrl?: string;
-  archive?: FormData; // For file uploads
+  git_url?: string;
+  archive_ref?: string;
 }
 
 export interface CreateDeploymentResponse {
@@ -68,7 +68,7 @@ export interface SSELogEvent {
 export interface SSEStatusEvent {
   type: 'status';
   data: {
-    deploymentId: string;
+    deployment_id: string;
     status: DeploymentStatus;
   };
 }

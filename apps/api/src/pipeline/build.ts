@@ -10,7 +10,7 @@ export interface BuildInput {
 }
 
 export interface BuildResult {
-  imageTag: string;
+  image_tag: string;
 }
 
 export interface Builder {
@@ -30,11 +30,11 @@ export function createRailpackBuilder(deps: RailpackBuilderDeps = {}): Builder {
   const timeoutMs = deps.timeoutMs ?? 300000;
   return {
     async build({ deployment, workspacePath, logger }) {
-      const imageTag = `dep-${deployment.id}:${Math.floor(now().getTime() / 1000)}`;
-      await logger.log(`Building image ${imageTag} from ${workspacePath}`);
+      const image_tag = `dep-${deployment.id}:${Math.floor(now().getTime() / 1000)}`;
+      await logger.log(`Building image ${image_tag} from ${workspacePath}`);
       const result = await runStreaming(
         command,
-        ['build', workspacePath, '--name', imageTag],
+        ['build', workspacePath, '--name', image_tag],
         async (line) => {
           await logger.log(line);
         },
@@ -44,7 +44,7 @@ export function createRailpackBuilder(deps: RailpackBuilderDeps = {}): Builder {
       if (result.exitCode !== 0) {
         throw new BuildFailedError(`railpack build exited with code ${result.exitCode}`);
       }
-      return { imageTag };
+      return { image_tag };
     },
   };
 }

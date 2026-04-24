@@ -39,11 +39,11 @@ function loggerStub(): StageLogger & { lines: string[] } {
 
 const baseDeployment: Deployment = {
   id: 'd1',
-  sourceType: 'git',
-  sourceRef: 'https://example.com/repo.git',
+  source_type: 'git',
+  source_ref: 'https://example.com/repo.git',
   status: 'pending',
-  createdAt: '2025-01-01T00:00:00.000Z',
-  updatedAt: '2025-01-01T00:00:00.000Z',
+  created_at: '2025-01-01T00:00:00.000Z',
+  updated_at: '2025-01-01T00:00:00.000Z',
 };
 
 describe('git acquirer', () => {
@@ -93,7 +93,7 @@ describe('upload acquirer', () => {
     const acquirer = createUploadAcquirer({ uploadDir: tmp });
     await expect(
       acquirer.acquire({
-        deployment: { ...baseDeployment, sourceType: 'upload', sourceRef: 'missing.tar' },
+        deployment: { ...baseDeployment, source_type: 'upload', source_ref: 'missing.tar' },
         workspaceDir: path.join(tmp, 'ws'),
         logger: loggerStub(),
       }),
@@ -110,7 +110,7 @@ describe('upload acquirer', () => {
     });
     const workspaceDir = path.join(tmp, 'ws');
     const result = await acquirer.acquire({
-      deployment: { ...baseDeployment, sourceType: 'upload', sourceRef: 'src.tar' },
+      deployment: { ...baseDeployment, source_type: 'upload', source_ref: 'src.tar' },
       workspaceDir,
       logger,
     });

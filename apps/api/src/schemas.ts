@@ -1,11 +1,11 @@
 import { z } from 'zod';
 
 export const createDeploymentSchema = z.object({
-  gitUrl: z.string().url('gitUrl must be a valid URL').optional(),
-  archiveRef: z.string().min(1).optional(),
+  git_url: z.string().url('git_url must be a valid URL').optional(),
+  archive_ref: z.string().min(1).optional(),
 }).refine(
-  (d) => d.gitUrl !== undefined || d.archiveRef !== undefined,
-  { message: 'Either gitUrl or archiveRef is required' },
+  (d) => d.git_url !== undefined || d.archive_ref !== undefined,
+  { message: 'Either git_url or archive_ref is required' },
 );
 
 export type CreateDeploymentBody = z.infer<typeof createDeploymentSchema>;

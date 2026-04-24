@@ -15,6 +15,7 @@
     "@updraft/shared-types": "workspace:*",
     "better-sqlite3": "^12.9.0",
     "hono": "^4.3.0",
+    "nanoid": "^5.1.9",
     "zod": "^3.23.0"
   },
   "devDependencies": {

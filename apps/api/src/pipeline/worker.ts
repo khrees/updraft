@@ -35,21 +35,21 @@ export async function runPipeline(deploymentId: string, deps: PipelineDeps): Pro
 
     const acquireLogger = createStageLogger(deploymentId, 'system', { logs, deployments, publish: broadcast });
     const workspaceDir = path.join(workspaceRoot, deploymentId);
-    const { workspacePath } = await acquirerFor(deployment.sourceType).acquire({
+    const { workspacePath } = await acquirerFor(deployment.source_type).acquire({
       deployment,
       workspaceDir,
       logger: acquireLogger,
     });
 
     const buildLogger = createStageLogger(deploymentId, 'build', { logs, deployments, publish: broadcast });
-    const { imageTag } = await builder.build({
+    const { image_tag } = await builder.build({
       deployment,
       workspacePath,
       logger: buildLogger,
     });
 
-    deployments.updateFields(deploymentId, { imageTag });
-    await sysLogger.log(`Build complete: ${imageTag}`);
+    deployments.updateFields(deploymentId, { image_tag });
+    await sysLogger.log(`Build complete: ${image_tag}`);
     // Stops at 'building' until C-04 (deploy) and C-05 (route) land.
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

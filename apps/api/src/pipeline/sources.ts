@@ -27,10 +27,10 @@ export function createGitAcquirer(deps: GitAcquirerDeps = {}): SourceAcquirer {
   return {
     async acquire({ deployment, workspaceDir, logger }) {
       fs.mkdirSync(path.dirname(workspaceDir), { recursive: true });
-      await logger.log(`Cloning ${deployment.sourceRef}`);
+      await logger.log(`Cloning ${deployment.source_ref}`);
       const result = await runStreaming(
         'git',
-        ['clone', '--depth', '1', deployment.sourceRef, workspaceDir],
+        ['clone', '--depth', '1', deployment.source_ref, workspaceDir],
         async (line) => {
           await logger.log(line);
         },
@@ -53,12 +53,12 @@ export function createUploadAcquirer(deps: UploadAcquirerDeps = {}): SourceAcqui
   const uploadDir = deps.uploadDir ?? path.join(process.cwd(), 'data', 'uploads');
   return {
     async acquire({ deployment, workspaceDir, logger }) {
-      const archivePath = path.join(uploadDir, deployment.sourceRef);
+      const archivePath = path.join(uploadDir, deployment.source_ref);
       if (!fs.existsSync(archivePath)) {
         throw new SourceAcquisitionError(`Upload archive not found at ${archivePath}`);
       }
       fs.mkdirSync(workspaceDir, { recursive: true });
-      await logger.log(`Extracting ${deployment.sourceRef}`);
+      await logger.log(`Extracting ${deployment.source_ref}`);
       const result = await runStreaming(
         'tar',
         ['-xf', archivePath, '-C', workspaceDir],

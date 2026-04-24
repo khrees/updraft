@@ -33,11 +33,11 @@ function loggerStub(): StageLogger & { lines: string[] } {
 
 const deployment: Deployment = {
   id: 'abc',
-  sourceType: 'git',
-  sourceRef: 'https://example.com/r.git',
+  source_type: 'git',
+  source_ref: 'https://example.com/r.git',
   status: 'building',
-  createdAt: '2025-01-01T00:00:00.000Z',
-  updatedAt: '2025-01-01T00:00:00.000Z',
+  created_at: '2025-01-01T00:00:00.000Z',
+  updated_at: '2025-01-01T00:00:00.000Z',
 };
 
 describe('railpack builder', () => {
@@ -50,7 +50,7 @@ describe('railpack builder', () => {
     const logger = loggerStub();
     const result = await builder.build({ deployment, workspacePath: '/tmp/ws', logger });
     const expectedTag = `dep-abc:${Math.floor(new Date('2026-04-24T00:00:00.000Z').getTime() / 1000)}`;
-    expect(result.imageTag).toBe(expectedTag);
+    expect(result.image_tag).toBe(expectedTag);
     expect(captured.args).toEqual(['build', '/tmp/ws', '--name', expectedTag]);
     expect(logger.lines).toContain('Detected Node.js');
     expect(logger.lines).toContain('Building...');

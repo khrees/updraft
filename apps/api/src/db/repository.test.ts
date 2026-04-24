@@ -24,54 +24,54 @@ describe('deployment repository', () => {
 
   it('creates a deployment in pending state', () => {
     const repo = createDeploymentRepository(db);
-    const created = repo.create({ sourceType: 'git', sourceRef: 'https://example.com/repo.git' });
+    const created = repo.create({ source_type: 'git', source_ref: 'https://example.com/repo.git' });
     expect(created.status).toBe('pending');
     expect(created.id).toBeTruthy();
-    expect(created.sourceType).toBe('git');
-    expect(created.sourceRef).toBe('https://example.com/repo.git');
-    expect(created.createdAt).toBe(created.updatedAt);
+    expect(created.source_type).toBe('git');
+    expect(created.source_ref).toBe('https://example.com/repo.git');
+    expect(created.created_at).toBe(created.updated_at);
   });
 
   it('reads a deployment by id and returns null when missing', () => {
     const repo = createDeploymentRepository(db);
     expect(repo.getById('missing')).toBeNull();
-    const created = repo.create({ sourceType: 'upload', sourceRef: 'artifact-123' });
+    const created = repo.create({ source_type: 'upload', source_ref: 'artifact-123' });
     const fetched = repo.getById(created.id);
     expect(fetched).not.toBeNull();
     expect(fetched!.id).toBe(created.id);
-    expect(fetched!.sourceType).toBe('upload');
+    expect(fetched!.source_type).toBe('upload');
   });
 
   it('lists deployments newest-first', () => {
     const repo = createDeploymentRepository(db);
-    const a = repo.create({ sourceType: 'git', sourceRef: 'a' });
+    const a = repo.create({ source_type: 'git', source_ref: 'a' });
     db.prepare(
-      `UPDATE deployments SET createdAt = ?, updatedAt = ? WHERE id = ?`,
+      `UPDATE deployments SET created_at = ?, updated_at = ? WHERE id = ?`,
     ).run('2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z', a.id);
-    const b = repo.create({ sourceType: 'git', sourceRef: 'b' });
+    const b = repo.create({ source_type: 'git', source_ref: 'b' });
     const list = repo.list();
     expect(list.map((d) => d.id)).toEqual([b.id, a.id]);
   });
 
   it('updates mutable fields', () => {
     const repo = createDeploymentRepository(db);
-    const d = repo.create({ sourceType: 'git', sourceRef: 'r' });
+    const d = repo.create({ source_type: 'git', source_ref: 'r' });
     const updated = repo.updateFields(d.id, {
-      imageTag: 'dep-1:abc',
-      containerId: 'c1',
-      routePath: '/d/1',
-      liveUrl: 'http://localhost/d/1',
+      image_tag: 'dep-1:abc',
+      container_id: 'c1',
+      route_path: '/d/1',
+      live_url: 'http://localhost/d/1',
     });
-    expect(updated.imageTag).toBe('dep-1:abc');
-    expect(updated.containerId).toBe('c1');
-    expect(updated.routePath).toBe('/d/1');
-    expect(updated.liveUrl).toBe('http://localhost/d/1');
-    expect(updated.updatedAt).toBeTruthy();
+    expect(updated.image_tag).toBe('dep-1:abc');
+    expect(updated.container_id).toBe('c1');
+    expect(updated.route_path).toBe('/d/1');
+    expect(updated.live_url).toBe('http://localhost/d/1');
+    expect(updated.updated_at).toBeTruthy();
   });
 
   it('advances status through the happy path', () => {
     const repo = createDeploymentRepository(db);
-    const d = repo.create({ sourceType: 'git', sourceRef: 'r' });
+    const d = repo.create({ source_type: 'git', source_ref: 'r' });
     expect(repo.updateStatus(d.id, 'building').status).toBe('building');
     expect(repo.updateStatus(d.id, 'deploying').status).toBe('deploying');
     expect(repo.updateStatus(d.id, 'live').status).toBe('live');
@@ -79,31 +79,32 @@ describe('deployment repository', () => {
 
   it('allows any non-terminal state to transition to failed', () => {
     const repo = createDeploymentRepository(db);
-    const d = repo.create({ sourceType: 'git', sourceRef: 'r' });
+    const d = repo.create({ source_type: 'git', source_ref: 'r' });
     expect(repo.updateStatus(d.id, 'failed').status).toBe('failed');
   });
 
   it('allows any non-terminal state to transition to cancelled', () => {
     const repo = createDeploymentRepository(db);
-    const d = repo.create({ sourceType: 'git', sourceRef: 'r' });
+    const d = repo.create({ source_type: 'git', source_ref: 'r' });
     repo.updateStatus(d.id, 'building');
     expect(repo.updateStatus(d.id, 'cancelled').status).toBe('cancelled');
   });
 
   it('rejects invalid status transitions', () => {
     const repo = createDeploymentRepository(db);
-    const d = repo.create({ sourceType: 'git', sourceRef: 'r' });
+    const d = repo.create({ source_type: 'git', source_ref: 'r' });
     expect(() => repo.updateStatus(d.id, 'live')).toThrow(InvalidStatusTransitionError);
     repo.updateStatus(d.id, 'building');
     repo.updateStatus(d.id, 'deploying');
     repo.updateStatus(d.id, 'live');
     expect(() => repo.updateStatus(d.id, 'failed')).toThrow(InvalidStatusTransitionError);
+    expect(() => repo.updateStatus(d.id, 'cancelled')).toThrow(InvalidStatusTransitionError);
   });
 
   it('throws when updating a missing deployment', () => {
     const repo = createDeploymentRepository(db);
     expect(() => repo.updateStatus('nope', 'building')).toThrow(DeploymentNotFoundError);
-    expect(() => repo.updateFields('nope', { imageTag: 'x' })).toThrow(DeploymentNotFoundError);
+    expect(() => repo.updateFields('nope', { image_tag: 'x' })).toThrow(DeploymentNotFoundError);
   });
 
   it('exposes isValidStatusTransition helper', () => {
@@ -124,13 +125,13 @@ describe('log repository', () => {
   it('appends logs with monotonic per-deployment sequence numbers', () => {
     const deployments = createDeploymentRepository(db);
     const logs = createLogRepository(db);
-    const d1 = deployments.create({ sourceType: 'git', sourceRef: 'a' });
-    const d2 = deployments.create({ sourceType: 'git', sourceRef: 'b' });
+    const d1 = deployments.create({ source_type: 'git', source_ref: 'a' });
+    const d2 = deployments.create({ source_type: 'git', source_ref: 'b' });
 
-    const l1 = logs.append({ deploymentId: d1.id, stage: 'build', message: 'one' });
-    const l2 = logs.append({ deploymentId: d1.id, stage: 'build', message: 'two' });
-    const l3 = logs.append({ deploymentId: d2.id, stage: 'build', message: 'other' });
-    const l4 = logs.append({ deploymentId: d1.id, stage: 'deploy', message: 'three' });
+    const l1 = logs.append({ deployment_id: d1.id, stage: 'build', message: 'one' });
+    const l2 = logs.append({ deployment_id: d1.id, stage: 'build', message: 'two' });
+    const l3 = logs.append({ deployment_id: d2.id, stage: 'build', message: 'other' });
+    const l4 = logs.append({ deployment_id: d1.id, stage: 'deploy', message: 'three' });
 
     expect(l1.sequence).toBe(1);
     expect(l2.sequence).toBe(2);
@@ -141,11 +142,11 @@ describe('log repository', () => {
   it('reads logs ordered by sequence and supports afterSequence cursor', () => {
     const deployments = createDeploymentRepository(db);
     const logs = createLogRepository(db);
-    const d = deployments.create({ sourceType: 'git', sourceRef: 'r' });
+    const d = deployments.create({ source_type: 'git', source_ref: 'r' });
 
-    logs.append({ deploymentId: d.id, stage: 'build', message: 'a' });
-    logs.append({ deploymentId: d.id, stage: 'build', message: 'b' });
-    logs.append({ deploymentId: d.id, stage: 'deploy', message: 'c' });
+    logs.append({ deployment_id: d.id, stage: 'build', message: 'a' });
+    logs.append({ deployment_id: d.id, stage: 'build', message: 'b' });
+    logs.append({ deployment_id: d.id, stage: 'deploy', message: 'c' });
 
     const all = logs.listByDeployment(d.id);
     expect(all.map((e) => e.message)).toEqual(['a', 'b', 'c']);

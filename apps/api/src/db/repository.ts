@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import { randomUUID } from 'node:crypto';
+import { customAlphabet } from 'nanoid';
 import type {
   Deployment,
   DeploymentLogEvent,
@@ -8,22 +8,24 @@ import type {
   LogStage,
 } from '@updraft/shared-types';
 
+const nanoid = customAlphabet('abcdefghijklmnopqrstuvwxyz', 21);
+
 type DeploymentRow = {
   id: string;
-  sourceType: string;
-  sourceRef: string;
+  source_type: string;
+  source_ref: string;
   status: string;
-  imageTag: string | null;
-  containerId: string | null;
-  routePath: string | null;
-  liveUrl: string | null;
-  createdAt: string;
-  updatedAt: string;
+  image_tag: string | null;
+  container_id: string | null;
+  route_path: string | null;
+  live_url: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 type DeploymentLogRow = {
   id: string;
-  deploymentId: string;
+  deployment_id: string;
   stage: string;
   message: string;
   timestamp: string;
@@ -33,23 +35,23 @@ type DeploymentLogRow = {
 function rowToDeployment(row: DeploymentRow): Deployment {
   const d: Deployment = {
     id: row.id,
-    sourceType: row.sourceType as DeploymentSourceType,
-    sourceRef: row.sourceRef,
+    source_type: row.source_type as DeploymentSourceType,
+    source_ref: row.source_ref,
     status: row.status as DeploymentStatus,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
   };
-  if (row.imageTag !== null) d.imageTag = row.imageTag;
-  if (row.containerId !== null) d.containerId = row.containerId;
-  if (row.routePath !== null) d.routePath = row.routePath;
-  if (row.liveUrl !== null) d.liveUrl = row.liveUrl;
+  if (row.image_tag !== null) d.image_tag = row.image_tag;
+  if (row.container_id !== null) d.container_id = row.container_id;
+  if (row.route_path !== null) d.route_path = row.route_path;
+  if (row.live_url !== null) d.live_url = row.live_url;
   return d;
 }
 
 function rowToLogEvent(row: DeploymentLogRow): DeploymentLogEvent {
   return {
     id: row.id,
-    deploymentId: row.deploymentId,
+    deployment_id: row.deployment_id,
     stage: row.stage as LogStage,
     message: row.message,
     timestamp: row.timestamp,
@@ -90,33 +92,33 @@ export class DeploymentNotFoundError extends Error {
 }
 
 export interface CreateDeploymentInput {
-  sourceType: DeploymentSourceType;
-  sourceRef: string;
+  source_type: DeploymentSourceType;
+  source_ref: string;
 }
 
 export interface UpdateDeploymentInput {
-  imageTag?: string;
-  containerId?: string;
-  routePath?: string;
-  liveUrl?: string;
+  image_tag?: string;
+  container_id?: string;
+  route_path?: string;
+  live_url?: string;
 }
 
 export function createDeploymentRepository(db: Database.Database) {
   return {
     create(input: CreateDeploymentInput): Deployment {
       const now = new Date().toISOString();
-      const id = randomUUID();
+      const id = nanoid();
       db.prepare(
-        `INSERT INTO deployments (id, sourceType, sourceRef, status, createdAt, updatedAt)
+        `INSERT INTO deployments (id, source_type, source_ref, status, created_at, updated_at)
          VALUES (?, ?, ?, 'pending', ?, ?)`,
-      ).run(id, input.sourceType, input.sourceRef, now, now);
+      ).run(id, input.source_type, input.source_ref, now, now);
       return {
         id,
-        sourceType: input.sourceType,
-        sourceRef: input.sourceRef,
+        source_type: input.source_type,
+        source_ref: input.source_ref,
         status: 'pending',
-        createdAt: now,
-        updatedAt: now,
+        created_at: now,
+        updated_at: now,
       };
     },
 
@@ -129,7 +131,7 @@ export function createDeploymentRepository(db: Database.Database) {
 
     list(): Deployment[] {
       const rows = db
-        .prepare(`SELECT * FROM deployments ORDER BY createdAt DESC`)
+        .prepare(`SELECT * FROM deployments ORDER BY created_at DESC`)
         .all() as DeploymentRow[];
       return rows.map(rowToDeployment);
     },
@@ -137,8 +139,8 @@ export function createDeploymentRepository(db: Database.Database) {
     claim(): Deployment | null {
       const row = db
         .prepare(
-          `UPDATE deployments SET status = 'building', updatedAt = ? 
-           WHERE id = (SELECT id FROM deployments WHERE status = 'pending' ORDER BY createdAt ASC LIMIT 1)
+          `UPDATE deployments SET status = 'building', updated_at = ?
+           WHERE id = (SELECT id FROM deployments WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1)
            RETURNING *`,
         )
         .get(new Date().toISOString()) as DeploymentRow | undefined;
@@ -153,9 +155,9 @@ export function createDeploymentRepository(db: Database.Database) {
       }
       const now = new Date().toISOString();
       db.prepare(
-        `UPDATE deployments SET status = ?, updatedAt = ? WHERE id = ?`,
+        `UPDATE deployments SET status = ?, updated_at = ? WHERE id = ?`,
       ).run(next, now, id);
-      return { ...current, status: next, updatedAt: now };
+      return { ...current, status: next, updated_at: now };
     },
 
     updateStatusWithLog(
@@ -172,21 +174,21 @@ export function createDeploymentRepository(db: Database.Database) {
       const now = new Date().toISOString();
       const run = db.transaction(() => {
         db.prepare(
-          `UPDATE deployments SET status = ?, updatedAt = ? WHERE id = ?`,
+          `UPDATE deployments SET status = ?, updated_at = ? WHERE id = ?`,
         ).run(next, now, id);
         const seqRow = db
           .prepare(
-            `SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM deployment_logs WHERE deploymentId = ?`,
+            `SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM deployment_logs WHERE deployment_id = ?`,
           )
           .get(id) as { next: number };
         const seq = seqRow.next;
         db.prepare(
-          `INSERT INTO deployment_logs (id, deploymentId, stage, message, timestamp, sequence)
+          `INSERT INTO deployment_logs (id, deployment_id, stage, message, timestamp, sequence)
            VALUES (?, ?, ?, ?, ?, ?)`,
-        ).run(randomUUID(), id, logStage, logMessage, now, seq);
+        ).run(nanoid(), id, logStage, logMessage, now, seq);
       });
       run();
-      return { ...current, status: next, updatedAt: now };
+      return { ...current, status: next, updated_at: now };
     },
 
     updateFields(id: string, fields: UpdateDeploymentInput): Deployment {
@@ -198,7 +200,7 @@ export function createDeploymentRepository(db: Database.Database) {
       const setClause = entries.map(([k]) => `${k} = ?`).join(', ');
       const values = entries.map(([, v]) => v as string);
       db.prepare(
-        `UPDATE deployments SET ${setClause}, updatedAt = ? WHERE id = ?`,
+        `UPDATE deployments SET ${setClause}, updated_at = ? WHERE id = ?`,
       ).run(...values, now, id);
       return this.getById(id)!;
     },
@@ -208,26 +210,26 @@ export function createDeploymentRepository(db: Database.Database) {
 export function createLogRepository(db: Database.Database) {
   return {
     append(input: {
-      deploymentId: string;
+      deployment_id: string;
       stage: LogStage;
       message: string;
     }): DeploymentLogEvent {
-      const id = randomUUID();
+      const id = nanoid();
       const timestamp = new Date().toISOString();
       // MAX(sequence) + 1 scoped per deployment; COALESCE handles the empty case (gives 1).
       const seqRow = db
         .prepare(
-          `SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM deployment_logs WHERE deploymentId = ?`,
+          `SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM deployment_logs WHERE deployment_id = ?`,
         )
-        .get(input.deploymentId) as { next: number };
+        .get(input.deployment_id) as { next: number };
       const sequence = seqRow.next;
       db.prepare(
-        `INSERT INTO deployment_logs (id, deploymentId, stage, message, timestamp, sequence)
+        `INSERT INTO deployment_logs (id, deployment_id, stage, message, timestamp, sequence)
          VALUES (?, ?, ?, ?, ?, ?)`,
-      ).run(id, input.deploymentId, input.stage, input.message, timestamp, sequence);
+      ).run(id, input.deployment_id, input.stage, input.message, timestamp, sequence);
       return {
         id,
-        deploymentId: input.deploymentId,
+        deployment_id: input.deployment_id,
         stage: input.stage,
         message: input.message,
         timestamp,
@@ -236,17 +238,17 @@ export function createLogRepository(db: Database.Database) {
     },
 
     listByDeployment(
-      deploymentId: string,
+      deployment_id: string,
       opts: { afterSequence?: number } = {},
     ): DeploymentLogEvent[] {
       const after = opts.afterSequence ?? 0;
       const rows = db
         .prepare(
           `SELECT * FROM deployment_logs
-           WHERE deploymentId = ? AND sequence > ?
+           WHERE deployment_id = ? AND sequence > ?
            ORDER BY sequence ASC`,
         )
-        .all(deploymentId, after) as DeploymentLogRow[];
+        .all(deployment_id, after) as DeploymentLogRow[];
       return rows.map(rowToLogEvent);
     },
   };

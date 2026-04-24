@@ -21,12 +21,12 @@ export function createStageLogger(
   const broadcast = deps.publish ?? publish;
   return {
     async log(message) {
-      const event = deps.logs.append({ deploymentId, stage, message });
+      const event = deps.logs.append({ deployment_id: deploymentId, stage, message });
       broadcast(deploymentId, { type: 'log', data: event });
     },
     async status(next) {
       const updated = deps.deployments.updateStatus(deploymentId, next);
-      broadcast(deploymentId, { type: 'status', data: { deploymentId, status: updated.status } });
+      broadcast(deploymentId, { type: 'status', data: { deployment_id: deploymentId, status: updated.status } });
     },
   };
 }

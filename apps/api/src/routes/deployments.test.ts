@@ -36,7 +36,7 @@ describe('deployments router', () => {
     expect(json.success).toBe(false);
   });
 
-  it('rejects body missing both gitUrl and archiveRef with 400', async () => {
+  it('rejects body missing both git_url and archive_ref with 400', async () => {
     const router = createDeploymentsRouter(db, { enqueue: () => {} });
     const res = await router.request('/', {
       method: 'POST',
@@ -46,35 +46,35 @@ describe('deployments router', () => {
     expect(res.status).toBe(400);
   });
 
-  it('rejects invalid gitUrl with 400', async () => {
+  it('rejects invalid git_url with 400', async () => {
     const router = createDeploymentsRouter(db, { enqueue: () => {} });
-    const res = await router.request(jsonRequest('/', { gitUrl: 'not a url' }));
+    const res = await router.request(jsonRequest('/', { git_url: 'not a url' }));
     expect(res.status).toBe(400);
   });
 
   it('creates a deployment from a git url', async () => {
     const router = createDeploymentsRouter(db, { enqueue: () => {} });
-    const res = await router.request(jsonRequest('/', { gitUrl: 'https://example.com/r.git' }));
+    const res = await router.request(jsonRequest('/', { git_url: 'https://example.com/r.git' }));
     expect(res.status).toBe(201);
-    const json = (await res.json()) as { data: { id: string; status: string; sourceType: string } };
+    const json = (await res.json()) as { data: { id: string; status: string; source_type: string } };
     expect(json.data.status).toBe('pending');
-    expect(json.data.sourceType).toBe('git');
+    expect(json.data.source_type).toBe('git');
     expect(json.data.id).toBeTruthy();
   });
 
   it('lists created deployments newest-first', async () => {
     const router = createDeploymentsRouter(db, { enqueue: () => {} });
-    await router.request(jsonRequest('/', { gitUrl: 'https://example.com/a.git' }));
-    db.prepare(`UPDATE deployments SET createdAt = ?, updatedAt = ?`).run(
+    await router.request(jsonRequest('/', { git_url: 'https://example.com/a.git' }));
+    db.prepare(`UPDATE deployments SET created_at = ?, updated_at = ?`).run(
       '2020-01-01T00:00:00.000Z',
       '2020-01-01T00:00:00.000Z',
     );
-    await router.request(jsonRequest('/', { gitUrl: 'https://example.com/b.git' }));
+    await router.request(jsonRequest('/', { git_url: 'https://example.com/b.git' }));
     const res = await router.request('/', { method: 'GET' });
     expect(res.status).toBe(200);
-    const json = (await res.json()) as { data: Array<{ sourceRef: string }> };
+    const json = (await res.json()) as { data: Array<{ source_ref: string }> };
     expect(json.data).toHaveLength(2);
-    expect(json.data[0]!.sourceRef).toBe('https://example.com/b.git');
+    expect(json.data[0]!.source_ref).toBe('https://example.com/b.git');
   });
 
   it('returns 404 for unknown deployment id', async () => {
@@ -85,7 +85,7 @@ describe('deployments router', () => {
 
   it('cancels a pending deployment', async () => {
     const router = createDeploymentsRouter(db, { enqueue: () => {} });
-    const created = await router.request(jsonRequest('/', { gitUrl: 'https://example.com/r.git' }));
+    const created = await router.request(jsonRequest('/', { git_url: 'https://example.com/r.git' }));
     const { data } = (await created.json()) as { data: { id: string } };
     const res = await router.request(`/${data.id}/cancel`, { method: 'POST' });
     expect(res.status).toBe(200);
@@ -96,7 +96,7 @@ describe('deployments router', () => {
 
   it('returns 409 when cancelling an already-terminal deployment', async () => {
     const router = createDeploymentsRouter(db, { enqueue: () => {} });
-    const created = await router.request(jsonRequest('/', { gitUrl: 'https://example.com/r.git' }));
+    const created = await router.request(jsonRequest('/', { git_url: 'https://example.com/r.git' }));
     const { data } = (await created.json()) as { data: { id: string } };
     await router.request(`/${data.id}/cancel`, { method: 'POST' });
     const res = await router.request(`/${data.id}/cancel`, { method: 'POST' });
