@@ -6,6 +6,7 @@ import { selectAcquirer, type SourceAcquirer } from './sources.js';
 import { createRailpackBuilder, type Builder } from './build.js';
 import { createDockerRunner, type Runner } from './runner.js';
 import { createPathRouteAssigner, type RouteAssigner } from './routing.js';
+import { createCaddyRouteRegistrar, type RouteRegistrar } from './caddy.js';
 import { publish } from '../sse/broker.js';
 
 export interface PipelineDeps {
@@ -16,6 +17,7 @@ export interface PipelineDeps {
   builder?: Builder;
   runner?: Runner;
   routeAssigner?: RouteAssigner;
+  routeRegistrar?: RouteRegistrar;
   workspaceRoot?: string;
 }
 
@@ -43,6 +45,7 @@ export async function runPipeline(deploymentId: string, deps: PipelineDeps): Pro
   const builder = deps.builder ?? createRailpackBuilder();
   const runner = deps.runner ?? createDockerRunner();
   const routeAssigner = deps.routeAssigner ?? createPathRouteAssigner();
+  const routeRegistrar = deps.routeRegistrar ?? createCaddyRouteRegistrar();
 
   const loggerFor = (stage: LogStage): StageLogger =>
     createStageLogger(deploymentId, stage, { logs, deployments, publish: broadcast });
@@ -88,6 +91,15 @@ export async function runPipeline(deploymentId: string, deps: PipelineDeps): Pro
     );
     deployments.updateFields(deploymentId, { route_path, live_url });
     await sysLogger.log(`Route assigned: ${live_url}`);
+
+    await runStage('system', async () => {
+      await routeRegistrar.register({
+        deploymentId,
+        containerName: container_name,
+        internalPort: internal_port,
+      });
+    });
+    await sysLogger.log(`Caddy route registered: /d/${deploymentId}`);
 
     await sysLogger.status('running');
   } catch (err) {

@@ -7,6 +7,7 @@ import type { SourceAcquirer } from './sources.js';
 import type { Builder } from './build.js';
 import type { Runner } from './runner.js';
 import type { RouteAssigner } from './routing.js';
+import type { RouteRegistrar } from './caddy.js';
 import type { SSEMessage } from '@updraft/shared-types';
 import { BuildFailedError, DeployFailedError, SourceAcquisitionError } from '../lib/errors.js';
 
@@ -76,6 +77,12 @@ function fakeRouteAssigner(): RouteAssigner {
   };
 }
 
+function fakeRouteRegistrar(): RouteRegistrar {
+  return {
+    async register() {},
+  };
+}
+
 describe('runPipeline', () => {
   let db: Database.Database;
   beforeEach(() => {
@@ -98,6 +105,7 @@ describe('runPipeline', () => {
       builder: fakeBuilder('dep-x:42'),
       runner: fakeRunner('abcdef123456'),
       routeAssigner: fakeRouteAssigner(),
+      routeRegistrar: fakeRouteRegistrar(),
     });
 
     const after = deployments.getById(d.id)!;
@@ -140,6 +148,7 @@ describe('runPipeline', () => {
       builder: fakeBuilder(),
       runner: fakeRunner(),
       routeAssigner: fakeRouteAssigner(),
+      routeRegistrar: fakeRouteRegistrar(),
     });
 
     const after = deployments.getById(d.id)!;
@@ -162,6 +171,7 @@ describe('runPipeline', () => {
       builder: failingBuilder(),
       runner: fakeRunner(),
       routeAssigner: fakeRouteAssigner(),
+      routeRegistrar: fakeRouteRegistrar(),
     });
 
     expect(deployments.getById(d.id)!.status).toBe('failed');
@@ -183,6 +193,7 @@ describe('runPipeline', () => {
       builder: fakeBuilder(),
       runner: failingRunner(),
       routeAssigner: fakeRouteAssigner(),
+      routeRegistrar: fakeRouteRegistrar(),
     });
 
     const after = deployments.getById(d.id)!;
@@ -222,6 +233,7 @@ describe('runPipeline', () => {
       builder: fakeBuilder(),
       runner: fakeRunner(),
       routeAssigner: fakeRouteAssigner(),
+      routeRegistrar: fakeRouteRegistrar(),
     });
 
     expect(deployments.getById(d.id)!.status).toBe('running');
