@@ -69,7 +69,7 @@ export interface UploadAcquirerDeps {
 }
 
 export function createUploadAcquirer(deps: UploadAcquirerDeps = {}): SourceAcquirer {
-  const uploadDir = deps.uploadDir ?? path.join(process.cwd(), 'data', 'uploads');
+  const uploadDir = deps.uploadDir ?? process.env['UPLOAD_DIR'] ?? path.join(process.cwd(), 'data', 'uploads');
   return {
     async acquire({ deployment, workspaceDir, logger }) {
       const archivePath = path.join(uploadDir, deployment.source_ref);

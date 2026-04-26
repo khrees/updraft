@@ -1,0 +1,66 @@
+name: updraft
+
+services:
+  caddy:
+    image: caddy:2
+    ports:
+      - "8080:80"
+      - "2019:2019"
+    volumes:
+      - ../../infra/caddy/caddy.json:/etc/caddy/caddy.json:ro
+      - caddy_data:/data
+    command: caddy run --config /etc/caddy/caddy.json
+    networks:
+      - deployments
+    depends_on:
+      - frontend
+      - api
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ../..
+      dockerfile: apps/frontend/Dockerfile
+    networks:
+      - deployments
+    restart: unless-stopped
+
+  buildkit:
+    image: moby/buildkit:latest
+    privileged: true
+    networks:
+      - deployments
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    environment:
+      PORT: "8088"
+      DB_PATH: /data/updraft.db
+      PUBLIC_BASE_URL: "http://localhost:8080"
+      CADDY_ADMIN_URL: "http://caddy:2019"
+      DEPLOYMENT_NETWORK: updraft_deployments
+      APP_INTERNAL_PORT: "3000"
+      UPLOAD_DIR: /data/uploads
+      # Railpack uses BuildKit directly (gRPC). Point at the sidecar container
+      # — railpack will spawn a `docker exec` against it via the mounted socket.
+      BUILDKIT_HOST: "docker-container://updraft-buildkit-1"
+    volumes:
+      - api_data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - deployments
+    depends_on:
+      - buildkit
+    restart: unless-stopped
+
+networks:
+  deployments:
+    name: updraft_deployments
+    driver: bridge
+
+volumes:
+  caddy_data:
+  api_data:

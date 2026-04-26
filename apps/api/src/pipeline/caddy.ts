@@ -37,18 +37,20 @@ export function createCaddyRouteRegistrar(deps: CaddyRouteRegistrarDeps = {}): R
 
       if (putRes.ok) return;
 
-      // Route doesn't exist yet — POST to insert into the routes array
-      // Insert at index 1 (after the api-route, before the frontend catch-all)
-      const postUrl = `${adminUrl}/config/apps/http/servers/updraft/routes/1`;
-      const postRes = await fetch(postUrl, {
-        method: 'POST',
+      // Route doesn't exist yet — PUT to insert at index 1 so it sits
+      // between the /api/* route and the frontend /* catch-all. (POST on
+      // an array path appends, which would put it after the catch-all and
+      // never match.)
+      const insertUrl = `${adminUrl}/config/apps/http/servers/updraft/routes/1`;
+      const insertRes = await fetch(insertUrl, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(route),
       });
 
-      if (!postRes.ok) {
-        const body = await postRes.text().catch(() => '');
-        throw new Error(`Caddy admin API error ${postRes.status}: ${body}`);
+      if (!insertRes.ok) {
+        const body = await insertRes.text().catch(() => '');
+        throw new Error(`Caddy admin API error ${insertRes.status}: ${body}`);
       }
     },
   };

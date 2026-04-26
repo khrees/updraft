@@ -68,16 +68,15 @@ export function LogViewer({ deployment, onClose }: Props) {
   return (
     <section className={`log-panel${isFailed ? ' log-panel--failed' : ''}`}>
       <div className="log-panel-header">
-        <div className="log-panel-title">
-          <span className="log-panel-id">{deployment.id}</span>
-          <span className={`status-pill status-${liveStatus}`}>{liveStatus}</span>
-          <span className={`stream-indicator stream-${streamState}`}>
-            {streamState === 'connecting' && 'Connecting…'}
-            {streamState === 'live' && 'Live'}
-            {streamState === 'error' && 'Reconnecting…'}
-            {streamState === 'done' && `Stream closed · ${doneStatus}`}
-          </span>
-        </div>
+<div className="log-panel-title">
+            <span className="log-panel-id">{deployment.id}</span>
+            <span className={`stream-indicator stream-${streamState}`}>
+              {streamState === 'connecting' && 'Connecting…'}
+              {streamState === 'live' && 'Live'}
+              {streamState === 'error' && 'Reconnecting…'}
+              {streamState === 'done' && `Done · ${doneStatus}`}
+            </span>
+          </div>
         <button className="log-close-button" onClick={onClose} aria-label="Close log viewer">×</button>
       </div>
       <div className="log-scroll" ref={scrollContainerRef}>

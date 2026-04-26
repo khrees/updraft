@@ -36,9 +36,9 @@ export function AppPage() {
 
   const submitLabel = useMemo(() => {
     if (createMutation.isPending) {
-      return mode === 'git' ? 'Queueing repo...' : 'Uploading archive...';
+      return mode === 'git' ? 'Queueing repo...' : 'Uploading...';
     }
-    return mode === 'git' ? 'Deploy from Git' : 'Deploy uploaded archive';
+    return 'Deploy';
   }, [createMutation.isPending, mode]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -47,68 +47,73 @@ export function AppPage() {
 
     if (mode === 'git') {
       if (!gitUrl.trim()) {
-        setFormError('Enter a Git repository URL.');
+        setFormError('Enter a git URL');
         return;
       }
       await createMutation.mutateAsync({ mode: 'git', gitUrl: gitUrl.trim() }).catch((error: unknown) => {
-        setFormError(error instanceof Error ? error.message : 'Failed to queue deployment');
+        setFormError(error instanceof Error ? error.message : 'Failed to deploy');
       });
       return;
     }
 
     if (!archive) {
-      setFormError('Choose a project archive to upload.');
+      setFormError('Select a file to upload');
       return;
     }
 
     await createMutation.mutateAsync({ mode: 'upload', archive }).catch((error: unknown) => {
-      setFormError(error instanceof Error ? error.message : 'Failed to queue deployment');
+      setFormError(error instanceof Error ? error.message : 'Failed to deploy');
     });
   };
 
   return (
     <main className="page-shell">
-      <section className="hero-panel">
-        <div className="hero-copy">
-          <p className="eyebrow">One-page deployment console</p>
-          <h1>Ship a repo or archive into the local pipeline.</h1>
-          <p className="hero-text">
-            Choose a source, submit a deployment, and watch logs stream live.
-          </p>
+      <header className="page-header">
+        <div className="brand">
+          <div className="brand-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+            </svg>
+          </div>
+          <span className="brand-name">Updraft</span>
         </div>
+      </header>
+
+      <section className="hero">
+        <h1>Deploy your project</h1>
+        <p>Connect a Git repository or upload a build archive to deploy instantly.</p>
       </section>
 
-      <section className="app-grid">
+      <section className="main-grid">
         <section className="panel">
           <div className="panel-header">
-            <h2>Create deployment</h2>
-            <p>Start from a Git URL or upload a tarball/zip for extraction.</p>
+            <h2>New Deployment</h2>
+            <p>Start from a git URL or upload an archive.</p>
           </div>
 
           <form className="deployment-form" onSubmit={handleSubmit}>
-            <div className="mode-toggle" role="tablist" aria-label="Deployment source">
+            <div className="mode-toggle" role="tablist">
               <button
                 type="button"
                 className={mode === 'git' ? 'toggle-button active' : 'toggle-button'}
                 onClick={() => setMode('git')}
               >
-                Git URL
+                Git
               </button>
               <button
                 type="button"
                 className={mode === 'upload' ? 'toggle-button active' : 'toggle-button'}
                 onClick={() => setMode('upload')}
               >
-                Upload archive
+                Upload
               </button>
             </div>
 
             {mode === 'git' ? (
               <label className="field">
-                <span>Repository URL</span>
+                <label>Repository URL</label>
                 <input
                   type="url"
-                  name="gitUrl"
                   placeholder="https://github.com/owner/repo"
                   value={gitUrl}
                   onChange={(event) => setGitUrl(event.target.value)}
@@ -116,24 +121,26 @@ export function AppPage() {
               </label>
             ) : (
               <label className="field">
-                <span>Project archive</span>
-                <input
-                  type="file"
-                  name="archive"
-                  accept=".tar,.tar.gz,.tgz,.zip"
-                  onChange={(event) => setArchive(event.target.files?.[0] ?? null)}
-                />
+                <label>Project archive</label>
+                <div className="file-input-wrapper">
+                  <div className="file-input-label">
+                    <span>{archive ? archive.name : 'Drop a file or click to browse'}</span>
+                  </div>
+                  <input
+                    type="file"
+                    accept=".tar,.tar.gz,.tgz,.zip"
+                    onChange={(event) => setArchive(event.target.files?.[0] ?? null)}
+                  />
+                </div>
               </label>
             )}
 
             {(formError || createMutation.error) ? (
-              <p className="form-message error">
-                {formError ?? createMutation.error?.message}
-              </p>
+              <p className="form-message error">{formError ?? createMutation.error?.message}</p>
             ) : null}
 
             {createMutation.isSuccess ? (
-              <p className="form-message success">Deployment queued successfully.</p>
+              <p className="form-message success">Deployment queued</p>
             ) : null}
 
             <button type="submit" className="submit-button" disabled={createMutation.isPending}>
@@ -143,15 +150,12 @@ export function AppPage() {
         </section>
 
         <section className="panel">
-          <div className="panel-header">
-            <h2>Recent deployments</h2>
-            <p>Click a row to view live logs. Updates every 3 seconds.</p>
+          <div className="deployments-header">
+            <h2>Recent Deployments</h2>
           </div>
 
-          {deploymentsQuery.isLoading ? <p className="empty-state">Loading deployments...</p> : null}
-          {deploymentsQuery.isError ? (
-            <p className="empty-state error">{deploymentsQuery.error.message}</p>
-          ) : null}
+          {deploymentsQuery.isLoading ? <p className="empty-state">Loading...</p> : null}
+          {deploymentsQuery.isError ? <p className="empty-state">{deploymentsQuery.error.message}</p> : null}
 
           {!deploymentsQuery.isLoading && !deploymentsQuery.isError ? (
             deploymentsQuery.data && deploymentsQuery.data.length > 0 ? (
@@ -165,17 +169,11 @@ export function AppPage() {
                     tabIndex={0}
                     onKeyDown={(e) => e.key === 'Enter' && setSelectedDeployment(deployment)}
                   >
-                    <div>
+                    <div className="deployment-info">
                       <p className="deployment-id">{deployment.id}</p>
                       <p className="deployment-source">{deployment.source_ref}</p>
                       {deployment.live_url ? (
-                        <a
-                          className="deployment-live-url"
-                          href={deployment.live_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                        >
+                        <a className="deployment-url" href={deployment.live_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
                           {deployment.live_url}
                         </a>
                       ) : null}
@@ -183,23 +181,20 @@ export function AppPage() {
                     <div className="deployment-meta">
                       <span className={`status-pill status-${deployment.status}`}>{deployment.status}</span>
                       {deployment.image_tag ? <span className="image-tag">{deployment.image_tag}</span> : null}
-                      <span>{formatDate(deployment.created_at)}</span>
+                      <span className="deployment-time">{formatDate(deployment.created_at)}</span>
                     </div>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="empty-state">No deployments yet. Submit one from the form.</p>
+              <p className="empty-state">No deployments yet</p>
             )
           ) : null}
         </section>
       </section>
 
       {selectedDeployment ? (
-        <LogViewer
-          deployment={selectedDeployment}
-          onClose={() => setSelectedDeployment(null)}
-        />
+        <LogViewer deployment={selectedDeployment} onClose={() => setSelectedDeployment(null)} />
       ) : null}
     </main>
   );
