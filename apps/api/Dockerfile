@@ -36,10 +36,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git curl ca-certificates docker.io \
   && rm -rf /var/lib/apt/lists/*
 
-# Railpack CLI — installs to /usr/local/bin/railpack
+# Railpack CLI — installs to $HOME/.local/bin/railpack
 RUN curl -fsSL https://railpack.com/install.sh | sh \
   && railpack --version
 
+ENV PATH="/root/.local/bin:${PATH}"
 WORKDIR /app
 
 COPY --from=base /app/pruned ./

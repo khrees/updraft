@@ -26,3 +26,9 @@ export const createDeploymentSchema = z.object({
 );
 
 export type CreateDeploymentBody = z.infer<typeof createDeploymentSchema>;
+
+export const redeployDeploymentSchema = z.object({
+  image_tag: z.string().trim().min(1, 'image_tag is required'),
+});
+
+export type RedeployDeploymentBody = z.infer<typeof redeployDeploymentSchema>;

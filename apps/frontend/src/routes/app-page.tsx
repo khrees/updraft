@@ -215,7 +215,13 @@ export function AppPage() {
       </section>
 
       {selectedDeployment ? (
-        <LogViewer deployment={selectedDeployment} onClose={() => setSelectedDeployment(null)} />
+        <LogViewer
+          deployment={selectedDeployment}
+          onClose={() => setSelectedDeployment(null)}
+          onRedeployQueued={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['deployments'] });
+          }}
+        />
       ) : null}
     </main>
   );

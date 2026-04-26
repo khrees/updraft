@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { runMigrations } from '../db/migrate.js';
-import { createDeploymentRepository, createLogRepository } from '../db/repository.js';
+import { createBuildRepository, createDeploymentRepository, createLogRepository } from '../db/repository.js';
 import { runPipeline } from './worker.js';
 import type { SourceAcquirer } from './sources.js';
 import type { Builder } from './build.js';
@@ -92,12 +92,14 @@ describe('runPipeline', () => {
   it('runs happy path through running: persists runtime metadata, route, and live_url', async () => {
     const deployments = createDeploymentRepository(db);
     const logs = createLogRepository(db);
+    const builds = createBuildRepository(db);
     const messages: SSEMessage[] = [];
     const d = deployments.create({ source_type: 'git', source_ref: 'https://example.com/r.git' });
 
     await runPipeline(d.id, {
       deployments,
       logs,
+      builds,
       publish: (_id, msg) => {
         messages.push(msg);
       },
@@ -134,16 +136,22 @@ describe('runPipeline', () => {
     expect(statusEvents.map((m) => m.type === 'status' ? m.data.status : '')).toEqual(
       ['building', 'deploying', 'running'],
     );
+    const history = builds.listForSource('git', 'https://example.com/r.git');
+    expect(history).toHaveLength(1);
+    expect(history[0]?.image_tag).toBe('dep-x:42');
+    expect(history[0]?.build_method).toBe('railpack');
   });
 
   it('marks deployment failed and emits final system-stage error log when source acquisition throws', async () => {
     const deployments = createDeploymentRepository(db);
     const logs = createLogRepository(db);
+    const builds = createBuildRepository(db);
     const d = deployments.create({ source_type: 'git', source_ref: 'https://example.com/r.git' });
 
     await runPipeline(d.id, {
       deployments,
       logs,
+      builds,
       acquirer: () => failingAcquirer(),
       builder: fakeBuilder(),
       runner: fakeRunner(),
@@ -162,11 +170,13 @@ describe('runPipeline', () => {
   it('marks deployment failed with build-stage error log when the builder throws', async () => {
     const deployments = createDeploymentRepository(db);
     const logs = createLogRepository(db);
+    const builds = createBuildRepository(db);
     const d = deployments.create({ source_type: 'git', source_ref: 'https://example.com/r.git' });
 
     await runPipeline(d.id, {
       deployments,
       logs,
+      builds,
       acquirer: () => fakeAcquirer(),
       builder: failingBuilder(),
       runner: fakeRunner(),
@@ -184,11 +194,13 @@ describe('runPipeline', () => {
   it('marks deployment failed with deploy-stage error log when the runner throws', async () => {
     const deployments = createDeploymentRepository(db);
     const logs = createLogRepository(db);
+    const builds = createBuildRepository(db);
     const d = deployments.create({ source_type: 'git', source_ref: 'https://example.com/r.git' });
 
     await runPipeline(d.id, {
       deployments,
       logs,
+      builds,
       acquirer: () => fakeAcquirer(),
       builder: fakeBuilder(),
       runner: failingRunner(),
@@ -208,10 +220,12 @@ describe('runPipeline', () => {
   it('does nothing if the deployment does not exist', async () => {
     const deployments = createDeploymentRepository(db);
     const logs = createLogRepository(db);
+    const builds = createBuildRepository(db);
     await expect(
       runPipeline('missing', {
         deployments,
         logs,
+        builds,
         acquirer: () => fakeAcquirer(),
         builder: fakeBuilder(),
         runner: fakeRunner(),
@@ -223,12 +237,14 @@ describe('runPipeline', () => {
   it('does not re-transition a deployment already claimed into building', async () => {
     const deployments = createDeploymentRepository(db);
     const logs = createLogRepository(db);
+    const builds = createBuildRepository(db);
     const d = deployments.create({ source_type: 'git', source_ref: 'https://example.com/r.git' });
     deployments.claimById(d.id);
 
     await runPipeline(d.id, {
       deployments,
       logs,
+      builds,
       acquirer: () => fakeAcquirer(),
       builder: fakeBuilder(),
       runner: fakeRunner(),
@@ -237,5 +253,35 @@ describe('runPipeline', () => {
     });
 
     expect(deployments.getById(d.id)!.status).toBe('running');
+  });
+
+  it('skips build/acquire and deploys requested_image_tag', async () => {
+    const deployments = createDeploymentRepository(db);
+    const logs = createLogRepository(db);
+    const builds = createBuildRepository(db);
+    const d = deployments.create({
+      source_type: 'git',
+      source_ref: 'https://example.com/r.git',
+      requested_image_tag: 'dep-prior:9',
+    });
+    deployments.claimById(d.id);
+
+    await runPipeline(d.id, {
+      deployments,
+      logs,
+      builds,
+      acquirer: () => failingAcquirer(),
+      builder: failingBuilder(),
+      runner: fakeRunner('abcdef123456'),
+      routeAssigner: fakeRouteAssigner(),
+      routeRegistrar: fakeRouteRegistrar(),
+    });
+
+    const after = deployments.getById(d.id)!;
+    expect(after.status).toBe('running');
+    expect(after.image_tag).toBe('dep-prior:9');
+    const history = builds.listForSource('git', 'https://example.com/r.git');
+    expect(history[0]?.image_tag).toBe('dep-prior:9');
+    expect(history[0]?.build_method).toBe('reused');
   });
 });

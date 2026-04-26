@@ -40,6 +40,8 @@ The API owns everything: SQLite persistence, the pipeline worker queue, and the 
 2. `building → deploying` — dockerode creates and starts `dep-<id>` on the `updraft_deployments` bridge network
 3. `deploying → running` — route `/d/<id>` persisted, pushed to Caddy Admin API, deployment is live
 
+**Redeploy / rollback (bonus)** — every successful build is recorded in `deployment_builds`. You can list history with `GET /api/deployments/:id/builds`, then queue either `POST /api/deployments/:id/redeploy` or `POST /api/deployments/:id/rollback` with `{ "image_tag": "dep-...:..." }`. These flows reuse the image tag and skip Railpack.
+
 Failure at any stage sets status to `failed` and writes an error log entry — the terminal error shows up in the log viewer.
 
 **Log streaming** — `GET /deployments/:id/logs/stream` replays historical rows from SQLite first, then switches to live events from an in-process pub/sub broker. The client reconnects automatically on disconnect and resumes from the last `sequence` via `Last-Event-ID`, so nothing is lost across reconnects.

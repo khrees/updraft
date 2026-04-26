@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import type Database from 'better-sqlite3';
-import { createDeploymentRepository, createLogRepository, DeploymentNotFoundError } from '../db/repository.js';
-import { createDeploymentSchema } from '../schemas.js';
+import { createBuildRepository, createDeploymentRepository, createLogRepository, DeploymentNotFoundError } from '../db/repository.js';
+import { createDeploymentSchema, redeployDeploymentSchema } from '../schemas.js';
 import { handleError, BadRequestError, ConflictError } from '../lib/errors.js';
 import { subscribe } from '../sse/broker.js';
 import { getPipelineQueue } from '../pipeline/index.js';
@@ -23,6 +23,7 @@ export function createDeploymentsRouter(db: Database.Database, options: Deployme
   const router = new Hono();
   const deployments = createDeploymentRepository(db);
   const logs = createLogRepository(db);
+  const builds = createBuildRepository(db);
   const enqueue = options.enqueue ?? ((id: string) => getPipelineQueue(db).enqueue(id));
 
   // POST /deployments — create and enqueue
@@ -81,6 +82,18 @@ export function createDeploymentsRouter(db: Database.Database, options: Deployme
     }
   });
 
+  // GET /deployments/:id/builds — list prior image builds for the same source
+  router.get('/:id/builds', (c) => {
+    try {
+      const deployment = deployments.getById(c.req.param('id'));
+      if (!deployment) throw new DeploymentNotFoundError(c.req.param('id'));
+      const history = builds.listForSource(deployment.source_type, deployment.source_ref);
+      return c.json({ success: true, message: `${history.length} build(s) found`, data: history });
+    } catch (err) {
+      return handleError(c, err);
+    }
+  });
+
   // POST /deployments/:id/cancel — cancel a non-terminal deployment
   router.post('/:id/cancel', async (c) => {
     try {
@@ -91,6 +104,50 @@ export function createDeploymentsRouter(db: Database.Database, options: Deployme
       }
       const updated = deployments.updateStatus(deployment.id, 'cancelled');
       return c.json({ success: true, message: `Deployment ${updated.id} cancelled`, data: updated });
+    } catch (err) {
+      return handleError(c, err);
+    }
+  });
+
+  const enqueueRedeploy = async (deploymentId: string, imageTag: string) => {
+    const base = deployments.getById(deploymentId);
+    if (!base) throw new DeploymentNotFoundError(deploymentId);
+    if (!builds.hasForSourceImage(base.source_type, base.source_ref, imageTag)) {
+      throw new BadRequestError(`image_tag not found for this deployment source: ${imageTag}`);
+    }
+    const created = deployments.create({
+      source_type: base.source_type,
+      source_ref: base.source_ref,
+      requested_image_tag: imageTag,
+    });
+    logs.append({
+      deployment_id: created.id,
+      stage: 'system',
+      message: `Redeploy requested from existing image ${imageTag}`,
+    });
+    enqueue(created.id);
+    return created;
+  };
+
+  // POST /deployments/:id/redeploy — create a deployment from an existing image tag
+  router.post('/:id/redeploy', async (c) => {
+    try {
+      const body = await c.req.json().catch(() => { throw new BadRequestError('Request body must be valid JSON'); });
+      const parsed = redeployDeploymentSchema.parse(body);
+      const created = await enqueueRedeploy(c.req.param('id'), parsed.image_tag);
+      return c.json({ success: true, message: `Redeploy ${created.id} queued`, data: created }, 201);
+    } catch (err) {
+      return handleError(c, err);
+    }
+  });
+
+  // POST /deployments/:id/rollback — alias of redeploy using existing image tag
+  router.post('/:id/rollback', async (c) => {
+    try {
+      const body = await c.req.json().catch(() => { throw new BadRequestError('Request body must be valid JSON'); });
+      const parsed = redeployDeploymentSchema.parse(body);
+      const created = await enqueueRedeploy(c.req.param('id'), parsed.image_tag);
+      return c.json({ success: true, message: `Rollback ${created.id} queued`, data: created }, 201);
     } catch (err) {
       return handleError(c, err);
     }

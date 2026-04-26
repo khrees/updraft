@@ -1,6 +1,6 @@
 import path from 'node:path';
 import type { DeploymentSourceType, LogStage } from '@updraft/shared-types';
-import type { DeploymentRepository, LogRepository } from '../db/repository.js';
+import type { BuildRepository, DeploymentRepository, LogRepository } from '../db/repository.js';
 import { createStageLogger, type StageLogger } from './logger.js';
 import { selectAcquirer, type SourceAcquirer } from './sources.js';
 import { createRailpackBuilder, type Builder } from './build.js';
@@ -12,6 +12,7 @@ import { publish } from '../sse/broker.js';
 export interface PipelineDeps {
   deployments: DeploymentRepository;
   logs: LogRepository;
+  builds: BuildRepository;
   publish?: typeof publish;
   acquirer?: (sourceType: DeploymentSourceType) => SourceAcquirer;
   builder?: Builder;
@@ -38,7 +39,7 @@ async function runStage<T>(stage: LogStage, fn: () => Promise<T>): Promise<T> {
 }
 
 export async function runPipeline(deploymentId: string, deps: PipelineDeps): Promise<void> {
-  const { deployments, logs } = deps;
+  const { deployments, logs, builds } = deps;
   const broadcast = deps.publish ?? publish;
   const workspaceRoot = deps.workspaceRoot ?? path.join(process.cwd(), 'data', 'workspaces');
   const acquirerFor = deps.acquirer ?? ((t) => selectAcquirer(t));
@@ -63,17 +64,37 @@ export async function runPipeline(deploymentId: string, deps: PipelineDeps): Pro
     }
 
     const workspaceDir = path.join(workspaceRoot, deploymentId);
-    const { workspacePath } = await runStage('system', () =>
-      acquirerFor(deployment.source_type).acquire({
-        deployment,
-        workspaceDir,
-        logger: loggerFor('system'),
-      }),
-    );
+    let image_tag = deployment.requested_image_tag;
+    if (image_tag) {
+      await loggerFor('build').log(`Reusing existing image tag: ${image_tag}`);
+      builds.record({
+        source_type: deployment.source_type,
+        source_ref: deployment.source_ref,
+        image_tag,
+        build_method: 'reused',
+        created_by_deployment_id: deploymentId,
+      });
+    } else {
+      const { workspacePath } = await runStage('system', () =>
+        acquirerFor(deployment.source_type).acquire({
+          deployment,
+          workspaceDir,
+          logger: loggerFor('system'),
+        }),
+      );
 
-    const { image_tag } = await runStage('build', () =>
-      builder.build({ deployment, workspacePath, logger: loggerFor('build') }),
-    );
+      const built = await runStage('build', () =>
+        builder.build({ deployment, workspacePath, logger: loggerFor('build') }),
+      );
+      image_tag = built.image_tag;
+      builds.record({
+        source_type: deployment.source_type,
+        source_ref: deployment.source_ref,
+        image_tag,
+        build_method: 'railpack',
+        created_by_deployment_id: deploymentId,
+      });
+    }
     deployments.updateFields(deploymentId, { image_tag });
     await sysLogger.log(`Build complete: ${image_tag}`);
 

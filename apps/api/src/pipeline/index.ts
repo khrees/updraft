@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import { createDeploymentRepository, createLogRepository } from '../db/repository.js';
+import { createBuildRepository, createDeploymentRepository, createLogRepository } from '../db/repository.js';
 import { createPipelineQueue, type PipelineQueue } from './queue.js';
 import { runPipeline, type PipelineDeps } from './worker.js';
 
@@ -10,6 +10,7 @@ export function getPipelineQueue(db: Database.Database, overrides: Partial<Pipel
   const deps: PipelineDeps = {
     deployments: createDeploymentRepository(db),
     logs: createLogRepository(db),
+    builds: createBuildRepository(db),
     ...overrides,
   };
   _queue = createPipelineQueue(

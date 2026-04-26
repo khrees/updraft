@@ -19,6 +19,7 @@ export interface Deployment {
   source_type: DeploymentSourceType;
   source_ref: string;
   status: DeploymentStatus;
+  requested_image_tag?: string;
   image_tag?: string;
   container_id?: string;
   container_name?: string;
@@ -37,6 +38,18 @@ export interface DeploymentLogEvent {
   message: string;
   timestamp: string; // ISO 8601
   sequence: number;
+}
+
+export type BuildMethod = 'railpack' | 'reused';
+
+export interface DeploymentBuild {
+  id: string;
+  source_type: DeploymentSourceType;
+  source_ref: string;
+  image_tag: string;
+  build_method: BuildMethod;
+  created_by_deployment_id: string;
+  created_at: string;
 }
 
 // API Request/Response types

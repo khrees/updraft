@@ -1,6 +1,8 @@
 import type Database from 'better-sqlite3';
 import { customAlphabet } from 'nanoid';
 import type {
+  BuildMethod,
+  DeploymentBuild,
   Deployment,
   DeploymentLogEvent,
   DeploymentSourceType,
@@ -15,6 +17,7 @@ type DeploymentRow = {
   source_type: string;
   source_ref: string;
   status: string;
+  requested_image_tag: string | null;
   image_tag: string | null;
   container_id: string | null;
   container_name: string | null;
@@ -34,6 +37,16 @@ type DeploymentLogRow = {
   sequence: number;
 };
 
+type DeploymentBuildRow = {
+  id: string;
+  source_type: string;
+  source_ref: string;
+  image_tag: string;
+  build_method: string;
+  created_by_deployment_id: string;
+  created_at: string;
+};
+
 function rowToDeployment(row: DeploymentRow): Deployment {
   const d: Deployment = {
     id: row.id,
@@ -43,6 +56,7 @@ function rowToDeployment(row: DeploymentRow): Deployment {
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
+  if (row.requested_image_tag !== null) d.requested_image_tag = row.requested_image_tag;
   if (row.image_tag !== null) d.image_tag = row.image_tag;
   if (row.container_id !== null) d.container_id = row.container_id;
   if (row.container_name !== null) d.container_name = row.container_name;
@@ -60,6 +74,18 @@ function rowToLogEvent(row: DeploymentLogRow): DeploymentLogEvent {
     message: row.message,
     timestamp: row.timestamp,
     sequence: row.sequence,
+  };
+}
+
+function rowToDeploymentBuild(row: DeploymentBuildRow): DeploymentBuild {
+  return {
+    id: row.id,
+    source_type: row.source_type as DeploymentSourceType,
+    source_ref: row.source_ref,
+    image_tag: row.image_tag,
+    build_method: row.build_method as BuildMethod,
+    created_by_deployment_id: row.created_by_deployment_id,
+    created_at: row.created_at,
   };
 }
 
@@ -98,6 +124,7 @@ export class DeploymentNotFoundError extends Error {
 export interface CreateDeploymentInput {
   source_type: DeploymentSourceType;
   source_ref: string;
+  requested_image_tag?: string;
 }
 
 export interface UpdateDeploymentInput {
@@ -115,14 +142,15 @@ export function createDeploymentRepository(db: Database.Database) {
       const now = new Date().toISOString();
       const id = nanoid();
       db.prepare(
-        `INSERT INTO deployments (id, source_type, source_ref, status, created_at, updated_at)
-         VALUES (?, ?, ?, 'pending', ?, ?)`,
-      ).run(id, input.source_type, input.source_ref, now, now);
+        `INSERT INTO deployments (id, source_type, source_ref, status, requested_image_tag, created_at, updated_at)
+         VALUES (?, ?, ?, 'pending', ?, ?, ?)`,
+      ).run(id, input.source_type, input.source_ref, input.requested_image_tag ?? null, now, now);
       return {
         id,
         source_type: input.source_type,
         source_ref: input.source_ref,
         status: 'pending',
+        ...(input.requested_image_tag ? { requested_image_tag: input.requested_image_tag } : {}),
         created_at: now,
         updated_at: now,
       };
@@ -278,5 +306,69 @@ export function createLogRepository(db: Database.Database) {
   };
 }
 
+export interface RecordBuildInput {
+  source_type: DeploymentSourceType;
+  source_ref: string;
+  image_tag: string;
+  build_method: BuildMethod;
+  created_by_deployment_id: string;
+}
+
+export function createBuildRepository(db: Database.Database) {
+  return {
+    record(input: RecordBuildInput): DeploymentBuild {
+      const existing = db.prepare(
+        `SELECT * FROM deployment_builds
+         WHERE source_type = ? AND source_ref = ? AND image_tag = ?`,
+      ).get(input.source_type, input.source_ref, input.image_tag) as DeploymentBuildRow | undefined;
+      if (existing) return rowToDeploymentBuild(existing);
+
+      const id = nanoid();
+      const created_at = new Date().toISOString();
+      db.prepare(
+        `INSERT INTO deployment_builds (
+          id, source_type, source_ref, image_tag, build_method, created_by_deployment_id, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        id,
+        input.source_type,
+        input.source_ref,
+        input.image_tag,
+        input.build_method,
+        input.created_by_deployment_id,
+        created_at,
+      );
+      return {
+        id,
+        source_type: input.source_type,
+        source_ref: input.source_ref,
+        image_tag: input.image_tag,
+        build_method: input.build_method,
+        created_by_deployment_id: input.created_by_deployment_id,
+        created_at,
+      };
+    },
+
+    listForSource(source_type: DeploymentSourceType, source_ref: string): DeploymentBuild[] {
+      const rows = db.prepare(
+        `SELECT * FROM deployment_builds
+         WHERE source_type = ? AND source_ref = ?
+         ORDER BY created_at DESC`,
+      ).all(source_type, source_ref) as DeploymentBuildRow[];
+      return rows.map(rowToDeploymentBuild);
+    },
+
+    hasForSourceImage(source_type: DeploymentSourceType, source_ref: string, image_tag: string): boolean {
+      const row = db.prepare(
+        `SELECT 1 AS found FROM deployment_builds
+         WHERE source_type = ? AND source_ref = ? AND image_tag = ?
+         LIMIT 1`,
+      ).get(source_type, source_ref, image_tag) as { found: number } | undefined;
+      return !!row;
+    },
+  };
+}
+
 export type DeploymentRepository = ReturnType<typeof createDeploymentRepository>;
 export type LogRepository = ReturnType<typeof createLogRepository>;
+export type BuildRepository = ReturnType<typeof createBuildRepository>;

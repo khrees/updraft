@@ -28,6 +28,8 @@ services:
   buildkit:
     image: moby/buildkit:latest
     privileged: true
+    ports:
+      - "1234:1234"
     networks:
       - deployments
     restart: unless-stopped
@@ -44,9 +46,9 @@ services:
       DEPLOYMENT_NETWORK: updraft_deployments
       APP_INTERNAL_PORT: "3000"
       UPLOAD_DIR: /data/uploads
-      # Railpack uses BuildKit directly (gRPC). Point at the sidecar container
-      # — railpack will spawn a `docker exec` against it via the mounted socket.
-      BUILDKIT_HOST: "docker-container://updraft-buildkit-1"
+      # Railpack uses BuildKit for building images.
+      # Point at the buildkit container via the docker socket (sibling container access)
+      BUILDKIT_HOST: "tcp://buildkit:1234"
     volumes:
       - api_data:/data
       - /var/run/docker.sock:/var/run/docker.sock

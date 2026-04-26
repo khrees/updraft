@@ -1,4 +1,4 @@
-import type { Deployment, DeploymentLogEvent } from '@updraft/shared-types';
+import type { Deployment, DeploymentBuild, DeploymentLogEvent } from '@updraft/shared-types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
@@ -41,6 +41,32 @@ export async function createDeployment(input: CreateDeploymentInput): Promise<De
     throw new Error(payload.message || 'Failed to create deployment');
   }
 
+  return payload.data;
+}
+
+export async function listDeploymentBuilds(deploymentId: string): Promise<DeploymentBuild[]> {
+  const response = await fetch(`${API_BASE_URL}/deployments/${deploymentId}/builds`);
+  const payload = (await response.json()) as ApiEnvelope<DeploymentBuild[]>;
+  if (!response.ok || !payload.success) {
+    throw new Error(payload.message || 'Failed to load deployment builds');
+  }
+  return payload.data;
+}
+
+export async function redeployDeployment(
+  deploymentId: string,
+  imageTag: string,
+  action: 'redeploy' | 'rollback' = 'redeploy',
+): Promise<Deployment> {
+  const response = await fetch(`${API_BASE_URL}/deployments/${deploymentId}/${action}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ image_tag: imageTag }),
+  });
+  const payload = (await response.json()) as ApiEnvelope<Deployment>;
+  if (!response.ok || !payload.success) {
+    throw new Error(payload.message || `Failed to ${action}`);
+  }
   return payload.data;
 }
 

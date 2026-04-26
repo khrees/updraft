@@ -576,6 +576,98 @@ input {
   gap: 0.25rem;
 }
 
+.build-history {
+  border-bottom: 1px solid var(--color-gray-800);
+  padding: 0.75rem 1.25rem;
+  background: #121214;
+}
+
+.build-history-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.build-history-title {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--color-gray-400);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.build-history-meta {
+  font-size: 0.75rem;
+  color: var(--color-gray-500);
+}
+
+.build-history-meta.success {
+  color: #4ade80;
+}
+
+.build-history-meta.error {
+  color: #f87171;
+}
+
+.build-chip-list {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+
+.build-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--color-gray-700);
+  border-radius: var(--border-radius-md);
+  padding: 0.35rem 0.5rem;
+  background: var(--color-gray-900);
+  white-space: nowrap;
+}
+
+.build-chip-tag {
+  font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Mono", monospace;
+  font-size: 0.75rem;
+  color: var(--color-gray-200);
+}
+
+.build-chip-method {
+  font-size: 0.6875rem;
+  color: var(--color-gray-500);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.build-chip-action {
+  border: 1px solid var(--color-gray-600);
+  background: #1d4ed8;
+  color: var(--color-white);
+  border-radius: var(--border-radius-sm);
+  font-size: 0.6875rem;
+  padding: 0.2rem 0.45rem;
+  cursor: pointer;
+}
+
+.build-chip-action.ghost {
+  background: transparent;
+  border-color: var(--color-gray-600);
+  color: var(--color-gray-300);
+}
+
+.build-chip-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.build-history-empty {
+  margin: 0;
+  color: var(--color-gray-600);
+  font-size: 0.75rem;
+}
+
 .log-line {
   display: grid;
   grid-template-columns: 5.5rem 4rem 1fr;

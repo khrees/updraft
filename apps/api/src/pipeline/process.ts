@@ -22,6 +22,7 @@ export async function runStreaming(
   timeoutMs?: number,
 ): Promise<SpawnResult> {
   const spawnFn = opts.spawn ?? (nodeSpawn as unknown as NonNullable<SpawnOptions['spawn']>);
+  console.log(`[spawn] ${cmd} ${args.join(' ')}`, opts.cwd ? `cwd=${opts.cwd}` : '');
   const child = spawnFn(cmd, args, {
     ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
     ...(opts.env !== undefined ? { env: opts.env } : {}),

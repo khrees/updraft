@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { runMigrations } from '../db/migrate.js';
-import { createDeploymentRepository, createLogRepository } from '../db/repository.js';
+import { createBuildRepository, createDeploymentRepository, createLogRepository } from '../db/repository.js';
 import { createDeploymentsRouter } from './deployments.js';
 
 function freshDb(): Database.Database {
@@ -88,6 +88,88 @@ describe('deployments router', () => {
     const router = createDeploymentsRouter(db, { enqueue: () => {} });
     const res = await router.request('/does-not-exist', { method: 'GET' });
     expect(res.status).toBe(404);
+  });
+
+  it('lists build history for a deployment source', async () => {
+    const router = createDeploymentsRouter(db, { enqueue: () => {} });
+    const deployments = createDeploymentRepository(db);
+    const buildRepo = createBuildRepository(db);
+    const d = deployments.create({ source_type: 'git', source_ref: 'https://example.com/r.git' });
+    buildRepo.record({
+      source_type: d.source_type,
+      source_ref: d.source_ref,
+      image_tag: 'dep-a:1',
+      build_method: 'railpack',
+      created_by_deployment_id: d.id,
+    });
+
+    const res = await router.request(`/${d.id}/builds`, { method: 'GET' });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { data: Array<{ image_tag: string }> };
+    expect(json.data).toHaveLength(1);
+    expect(json.data[0]?.image_tag).toBe('dep-a:1');
+  });
+
+  it('creates a redeploy from an existing image tag', async () => {
+    const queued: string[] = [];
+    const router = createDeploymentsRouter(db, { enqueue: (id) => queued.push(id) });
+    const deployments = createDeploymentRepository(db);
+    const buildRepo = createBuildRepository(db);
+    const d = deployments.create({ source_type: 'git', source_ref: 'https://example.com/r.git' });
+    buildRepo.record({
+      source_type: d.source_type,
+      source_ref: d.source_ref,
+      image_tag: 'dep-a:1',
+      build_method: 'railpack',
+      created_by_deployment_id: d.id,
+    });
+
+    const res = await router.request(`/${d.id}/redeploy`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ image_tag: 'dep-a:1' }),
+    });
+    expect(res.status).toBe(201);
+    const json = (await res.json()) as { data: { id: string; requested_image_tag?: string } };
+    expect(json.data.requested_image_tag).toBe('dep-a:1');
+    expect(queued).toContain(json.data.id);
+  });
+
+  it('rejects redeploy when image_tag is not in build history', async () => {
+    const router = createDeploymentsRouter(db, { enqueue: () => {} });
+    const deployments = createDeploymentRepository(db);
+    const d = deployments.create({ source_type: 'git', source_ref: 'https://example.com/r.git' });
+
+    const res = await router.request(`/${d.id}/redeploy`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ image_tag: 'dep-missing:1' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('supports rollback endpoint as redeploy alias', async () => {
+    const queued: string[] = [];
+    const router = createDeploymentsRouter(db, { enqueue: (id) => queued.push(id) });
+    const deployments = createDeploymentRepository(db);
+    const buildRepo = createBuildRepository(db);
+    const d = deployments.create({ source_type: 'git', source_ref: 'https://example.com/r.git' });
+    buildRepo.record({
+      source_type: d.source_type,
+      source_ref: d.source_ref,
+      image_tag: 'dep-a:1',
+      build_method: 'railpack',
+      created_by_deployment_id: d.id,
+    });
+
+    const res = await router.request(`/${d.id}/rollback`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ image_tag: 'dep-a:1' }),
+    });
+    expect(res.status).toBe(201);
+    const json = (await res.json()) as { data: { id: string } };
+    expect(queued).toContain(json.data.id);
   });
 
   it('cancels a pending deployment', async () => {

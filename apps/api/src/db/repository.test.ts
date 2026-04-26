@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { runMigrations } from './migrate.js';
 import {
+  createBuildRepository,
   createDeploymentRepository,
   createLogRepository,
   DeploymentNotFoundError,
@@ -30,6 +31,18 @@ describe('deployment repository', () => {
     expect(created.source_type).toBe('git');
     expect(created.source_ref).toBe('https://example.com/repo.git');
     expect(created.created_at).toBe(created.updated_at);
+  });
+
+  it('creates a deployment with requested_image_tag for redeploys', () => {
+    const repo = createDeploymentRepository(db);
+    const created = repo.create({
+      source_type: 'git',
+      source_ref: 'https://example.com/repo.git',
+      requested_image_tag: 'dep-abc:123',
+    });
+    expect(created.requested_image_tag).toBe('dep-abc:123');
+    const fetched = repo.getById(created.id);
+    expect(fetched?.requested_image_tag).toBe('dep-abc:123');
   });
 
   it('reads a deployment by id and returns null when missing', () => {
@@ -117,6 +130,64 @@ describe('deployment repository', () => {
     expect(isValidStatusTransition('running', 'failed')).toBe(false);
     expect(isValidStatusTransition('pending', 'cancelled')).toBe(true);
     expect(isValidStatusTransition('cancelled', 'failed')).toBe(false);
+  });
+});
+
+describe('build repository', () => {
+  let db: Database.Database;
+  beforeEach(() => {
+    db = freshDb();
+  });
+
+  it('records and lists build history for a source', () => {
+    const deployments = createDeploymentRepository(db);
+    const builds = createBuildRepository(db);
+    const d = deployments.create({ source_type: 'git', source_ref: 'https://example.com/repo.git' });
+
+    const first = builds.record({
+      source_type: d.source_type,
+      source_ref: d.source_ref,
+      image_tag: 'dep-a:1',
+      build_method: 'railpack',
+      created_by_deployment_id: d.id,
+    });
+    const second = builds.record({
+      source_type: d.source_type,
+      source_ref: d.source_ref,
+      image_tag: 'dep-a:2',
+      build_method: 'reused',
+      created_by_deployment_id: d.id,
+    });
+
+    const history = builds.listForSource(d.source_type, d.source_ref);
+    expect(history).toHaveLength(2);
+    expect(history.map((b) => b.image_tag).sort()).toEqual([first.image_tag, second.image_tag].sort());
+    expect(builds.hasForSourceImage(d.source_type, d.source_ref, second.image_tag)).toBe(true);
+    expect(builds.hasForSourceImage(d.source_type, d.source_ref, 'missing:tag')).toBe(false);
+  });
+
+  it('deduplicates records by source and image_tag', () => {
+    const deployments = createDeploymentRepository(db);
+    const builds = createBuildRepository(db);
+    const d = deployments.create({ source_type: 'git', source_ref: 'https://example.com/repo.git' });
+
+    const a = builds.record({
+      source_type: d.source_type,
+      source_ref: d.source_ref,
+      image_tag: 'dep-a:1',
+      build_method: 'railpack',
+      created_by_deployment_id: d.id,
+    });
+    const b = builds.record({
+      source_type: d.source_type,
+      source_ref: d.source_ref,
+      image_tag: 'dep-a:1',
+      build_method: 'reused',
+      created_by_deployment_id: d.id,
+    });
+
+    expect(a.id).toBe(b.id);
+    expect(builds.listForSource(d.source_type, d.source_ref)).toHaveLength(1);
   });
 });
 
