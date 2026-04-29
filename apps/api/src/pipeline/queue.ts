@@ -11,6 +11,7 @@ export type RunFn = (deploymentId: string) => Promise<void>;
 
 export interface QueueDeps {
   deployments: DeploymentRepository;
+  concurrency?: number;
   pollIntervalMs?: number;
 }
 
@@ -19,46 +20,43 @@ export function createPipelineQueue(
   run: RunFn,
 ): PipelineQueue {
   const pending: string[] = [];
-  let current: Promise<void> | null = null;
+  const active = new Set<Promise<void>>();
   let stopped = false;
+  const concurrency = deps.concurrency ?? 1;
   const pollIntervalMs = deps.pollIntervalMs ?? 1000;
 
   const tick = (): void => {
-    if (current || stopped) return;
-
-    let resolve!: () => void;
-    current = new Promise<void>(r => (resolve = r));
+    if (stopped || active.size >= concurrency) return;
 
     const next = pending.shift();
     const claimed = next === undefined
       ? deps.deployments.claim()
       : deps.deployments.claimById(next);
 
-    if (claimed) {
-      run(claimed.id)
-        .catch((err) => {
-          console.error(`pipeline run failed for ${claimed.id}:`, err);
-        })
-        .finally(() => {
-          current = null;
-          resolve();
-          tick();
-        });
+    if (!claimed) {
+      if (next === undefined && active.size === 0) {
+        // Nothing pending and nothing running — poll for DB-queued work.
+        setTimeout(tick, pollIntervalMs);
+      } else if (next !== undefined) {
+        // claimById returned null (race); try again immediately.
+        tick();
+      }
       return;
     }
 
-    current = null;
-    resolve();
+    const promise = run(claimed.id)
+      .catch((err) => {
+        console.error(`pipeline run failed for ${claimed.id}:`, err);
+      })
+      .finally(() => {
+        active.delete(promise);
+        tick();
+      });
 
-    if (next === undefined) {
-      const res = resolve;
-      current = null;
-      res?.();
-      setTimeout(tick, pollIntervalMs);
-      return;
-    }
+    active.add(promise);
 
-    tick();
+    // Fill remaining concurrency slots immediately.
+    if (active.size < concurrency && (pending.length > 0)) tick();
   };
 
   return {
@@ -67,16 +65,14 @@ export function createPipelineQueue(
       tick();
     },
     size() {
-      return pending.length + (current ? 1 : 0);
+      return pending.length + active.size;
     },
     async drain() {
-      while (current || pending.length > 0) {
-        if (current) {
-          await current;
+      while (active.size > 0 || pending.length > 0) {
+        if (active.size > 0) {
+          await Promise.race(active);
         } else {
-          // pending has items but tick() hasn't created `current` yet (e.g. between
-          // the finally() clearing `current` and the recursive tick() running).
-          // Yield to the event loop so tick() can advance before we re-check.
+          // pending has items but tick() hasn't created a slot yet.
           await new Promise<void>((r) => setTimeout(r, 0));
         }
       }

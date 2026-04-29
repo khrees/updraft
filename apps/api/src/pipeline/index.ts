@@ -14,8 +14,9 @@ export function getPipelineQueue(db: Database.Database, overrides: Partial<Pipel
     buildCache: createBuildCacheRepository(db),
     ...overrides,
   };
+  const concurrency = Number(process.env['PIPELINE_CONCURRENCY'] ?? 3);
   _queue = createPipelineQueue(
-    { deployments: deps.deployments, pollIntervalMs: 1000 },
+    { deployments: deps.deployments, concurrency, pollIntervalMs: 1000 },
     (id) => runPipeline(id, deps),
   );
   return _queue;

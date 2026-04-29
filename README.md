@@ -163,29 +163,49 @@ docker-compose.yml
 
 ## What broke
 
-**Caddy routes lost on restart.** Dynamic routes live in Caddy's memory only. A restart wipes them, and running containers become unreachable — the frontend catch-all serves the Updraft SPA for every deployment URL. Fixed by re-registering all `running` routes at API startup, and by making the registrar insert idempotently (delete-then-insert at the correct index, derived from the live config rather than a hardcoded position).
+**Caddy routes lost on restart.** Dynamic routes live in Caddy's memory. A restart wipes them, making running containers unreachable. Fixed by re-registering all `running` routes at API startup, with idempotent insert (delete-then-insert at the correct index derived from the live config).
 
-**Absolute asset paths in deployed apps.** Railpack-built Vite and Bun apps default to `base: "/"`, so their `index.html` has `<script src="/assets/app.js">`. The browser fetches that from the root, which hits the frontend SPA instead of the deployed container. CSS silently doesn't load. Fixed by injecting `<base href="/d/:id/">` into HTML responses via Caddy's `replace_response` handler, so asset resolution works without touching the deployed app.
+**Absolute asset paths in deployed apps.** Railpack-built Vite/Bun apps default to `base: "/"`, so `<script src="/assets/app.js">` hits the frontend SPA instead of the container. Fixed by injecting `<base href="/d/:id/">` into HTML responses via Caddy's `replace_response` handler.
 
-**State machine bug — `running` treated as terminal.** The SSE stream sent a `done` event when the deployment hit `running`, which closed the log viewer immediately. The bug was that `running` was in the same terminal-state check as `failed`. Obvious in hindsight — `running` means the container is up, not that the pipeline finished — but it only showed up when watching logs after a fast build.
+**`running` treated as terminal in SSE stream.** The log viewer closed immediately when a deployment hit `running` because it shared a terminal-state check with `failed`. Fixed by separating "pipeline done" (`failed`/`cancelled`) from "container is up" (`running`).
 
-**snake_case vs camelCase drift.** The DB schema was snake_case, the API was returning camelCase, and the shared types were inconsistent. Silent mismatches between what the frontend expected and what arrived. Fixed in one pass by committing to snake_case end-to-end — DB columns, API payloads, shared types — and switching to nanoid IDs (lowercase-only, no hyphens, readable in URLs and logs).
+**snake_case vs camelCase drift.** DB columns were snake_case, API responses camelCase, shared types inconsistent — silent mismatches throughout. Fixed in one pass: snake_case end-to-end across DB, API, and shared types.
 
-**`node:sqlite` type error.** Started with Node 22's built-in `node:sqlite` (experimental). No type declarations exist for it. Switched to `better-sqlite3`.
+**`SQLITE_BUSY` under concurrent writes.** No `busy_timeout` was set, so any write arriving while the pipeline held a transaction failed immediately. Fixed by setting `busy_timeout = 5000` and disabling auto-checkpoint in favour of an explicit WAL truncation on graceful shutdown.
 
-**Docker Compose teardown blocking.** `docker compose down -v` fails if a deployment container is still running — Compose only manages the services it defined, not the containers the API spawned dynamically. Workaround: `docker rm -f` the deployment containers first. Expected operational constraint, not fixed in the codebase.
+**Stuck deployments after API restart.** In-flight `building`/`deploying` deployments stayed stuck forever if the process died mid-pipeline. Fixed by forcing them to `failed` at startup so they can be retried.
+
+**`node:sqlite` type error.** Node 22's built-in `node:sqlite` is experimental with no type declarations. Switched to `better-sqlite3`.
+
+**Docker Compose teardown blocking.** `docker compose down -v` fails if deployment containers are still running — Compose only manages what it defined. Workaround: `docker rm -f` those containers first.
+
+---
+
+## What I learned
+
+**SQLite is production-ready if you configure it.** WAL mode + `busy_timeout` + explicit checkpointing handles real concurrent write pressure without any queue or connection pool. The defaults (`busy_timeout = 0`, auto-checkpoint) are wrong for a server — you have to opt in to the good behaviour.
+
+**Reliability gaps only show up under restarts.** The pipeline logic was correct in isolation, but a process crash mid-build left deployments stuck forever with no recovery path. Stateful systems need to reason about what happens when they start up cold, not just when they're running smoothly.
+
+**Path traversal is easy to introduce and easy to miss.** Using `archive.name` directly from a user upload to construct a file path felt natural in the moment — the bug isn't obvious until you think about what a malicious client would send. Input sanitisation at the boundary (`path.basename` + allowlist + resolved-path check) has to be deliberate.
+
+**Non-atomic DB patterns look fine until they're not.** The check-then-insert pattern in `buildCache.upsert` and `builds.record` would work correctly 99.9% of the time in local dev, then blow up under concurrent builds in production. SQLite has `INSERT OR IGNORE` and `ON CONFLICT DO UPDATE` — use them.
+
+**Serial queues are the safe default, but the wrong default.** A single-slot pipeline queue is easy to reason about and easy to test, but it means every deployment waits for every other one. Switching to a concurrency-limited pool (`active: Set<Promise>`) was about 30 lines and the behaviour is strictly better.
+
+**SSE is underrated.** Native browser reconnect with `Last-Event-ID`, no protocol overhead, works through every proxy. For one-directional server-to-client streams it's a better fit than WebSockets and simpler to implement correctly.
+
+**Caddy's Admin API makes dynamic routing practical.** No config reloads, no restarts — just `PUT /config/...` and the route is live instantly. The tricky part is that routes live in memory, which means startup recovery is a first-class concern, not an afterthought.
 
 ---
 
 ## What I'd change with more time
 
-**Persistent queue.** A startup sweep that re-queues `pending` and `building` deployments after a restart. About 20 lines.
+**Push instead of poll for deployment status.** The list polls every 3 s. An SSE channel for the list would remove the delay and the unnecessary requests.
 
-**Push instead of poll for deployment status.** The list polls every 3 s. An SSE channel for status events would remove the delay and the unnecessary requests.
+**Upload validation.** The API accepts whatever arrives in the `archive` field and runs `tar -xf` on it. A direct API call with a non-tar body fails silently. Should validate content type at the boundary.
 
-**Upload validation.** The API accepts whatever arrives in the `archive` field and runs `tar -xf` on it. The frontend always sends a valid tar (packed client-side), but a direct API call with a zip body fails silently. Should validate content type at the boundary.
-
-**Cache eviction.** The `build_cache` table grows unboundedly. LRU sweep on `last_used_at` would keep disk usage bounded. No pressure in local dev, so not implemented.
+**Cache eviction.** The `build_cache` table grows unboundedly. An LRU sweep on `last_used_at` would keep disk usage bounded.
 
 ---
 

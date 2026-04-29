@@ -14,6 +14,16 @@ export function getDb(): Database.Database {
     _db = new Database(DB_PATH);
     _db.exec('PRAGMA journal_mode = WAL');
     _db.exec('PRAGMA foreign_keys = ON');
+    // Retry writes for up to 5s before throwing SQLITE_BUSY.
+    // Without this, any write that arrives while the pipeline holds a
+    // transaction fails instantly with SQLITE_BUSY.
+    _db.exec('PRAGMA busy_timeout = 5000');
+    // WAL readers never block writers and vice-versa, but WAL checkpoints
+    // can still stall. wal_autocheckpoint=0 disables the auto-checkpoint so
+    // it doesn't compete with concurrent writes; we checkpoint on shutdown instead.
+    _db.exec('PRAGMA wal_autocheckpoint = 0');
+    // Keep frequently-used pages in memory.
+    _db.exec('PRAGMA cache_size = -8000'); // 8 MB
   }
   return _db;
 }

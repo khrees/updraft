@@ -113,7 +113,7 @@ export function createDockerRunner(deps: DockerRunnerDeps = {}): DockerRunner {
   const docker = deps.docker ?? new Dockerode();
   const network = deps.network ?? process.env['DEPLOYMENT_NETWORK'] ?? 'updraft_deployments';
   const internalPort = deps.internalPort ?? Number(process.env['APP_INTERNAL_PORT'] ?? 3000);
-  const healthCheckIntervalMs = deps.healthCheckIntervalMs ?? 1000;
+  const healthCheckIntervalMs = deps.healthCheckIntervalMs ?? 200;
   const healthCheckTimeoutMs = deps.healthCheckTimeoutMs ?? 30000;
   const drainTimeoutMs = deps.drainTimeoutMs ?? Number(process.env['DRAIN_TIMEOUT_MS'] ?? 10000);
   const fetchFn = deps.fetchFn ?? ((url: string) => fetch(url));
