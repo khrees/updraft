@@ -25,23 +25,35 @@ export function createPipelineQueue(
 
   const tick = (): void => {
     if (current || stopped) return;
+
+    let resolve!: () => void;
+    current = new Promise<void>(r => (resolve = r));
+
     const next = pending.shift();
     const claimed = next === undefined
       ? deps.deployments.claim()
       : deps.deployments.claimById(next);
+
     if (claimed) {
-      current = run(claimed.id)
+      run(claimed.id)
         .catch((err) => {
           console.error(`pipeline run failed for ${claimed.id}:`, err);
         })
         .finally(() => {
           current = null;
+          resolve();
           tick();
         });
       return;
     }
 
+    current = null;
+    resolve();
+
     if (next === undefined) {
+      const res = resolve;
+      current = null;
+      res?.();
       setTimeout(tick, pollIntervalMs);
       return;
     }

@@ -80,6 +80,7 @@ function fakeRouteAssigner(): RouteAssigner {
 function fakeRouteRegistrar(): RouteRegistrar {
   return {
     async register() {},
+    async unregister() {},
   };
 }
 

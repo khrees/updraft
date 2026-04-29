@@ -1,11 +1,11 @@
-import crypto from 'node:crypto';
-import type { Deployment } from '@updraft/shared-types';
-import { runStreaming, type SpawnOptions } from './process.js';
-import { BuildFailedError } from '../lib/errors.js';
-import type { StageLogger } from './logger.js';
-import type { BuildCacheRepository } from '../db/repository.js';
+import crypto from "node:crypto";
+import type { Deployment } from "@updraft/shared-types";
+import { runStreaming, type SpawnOptions } from "./process.js";
+import { BuildFailedError } from "../lib/errors.js";
+import type { StageLogger } from "./logger.js";
+import type { BuildCacheRepository } from "../db/repository.js";
 
-const RAILPACK_PATH = process.env.RAILPACK_PATH ?? '/root/.local/bin/railpack';
+const RAILPACK_PATH = process.env.RAILPACK_PATH ?? "/root/.local/bin/railpack";
 
 export interface BuildInput {
   deployment: Deployment;
@@ -22,7 +22,7 @@ export interface Builder {
 }
 
 export interface RailpackBuilderDeps {
-  spawn?: SpawnOptions['spawn'];
+  spawn?: SpawnOptions["spawn"];
   now?: () => Date;
   command?: string;
   timeoutMs?: number;
@@ -31,16 +31,17 @@ export interface RailpackBuilderDeps {
 
 function sourceCacheKey(source_type: string, source_ref: string): string {
   return crypto
-    .createHash('sha256')
+    .createHash("sha256")
     .update(`${source_type}:${source_ref}`)
-    .digest('hex')
+    .digest("hex")
     .slice(0, 16);
 }
 
 export function createRailpackBuilder(deps: RailpackBuilderDeps = {}): Builder {
   const command = deps.command ?? RAILPACK_PATH;
   const now = deps.now ?? (() => new Date());
-  const timeoutMs = deps.timeoutMs ?? 300000;
+  const timeoutMs =
+    deps.timeoutMs ?? Number(process.env["BUILD_TIMEOUT_MS"] ?? 600000);
   const cacheRepo = deps.cacheRepo;
 
   return {
@@ -51,13 +52,20 @@ export function createRailpackBuilder(deps: RailpackBuilderDeps = {}): Builder {
       // B-02: build cache reuse via railpack's --cache-key flag.
       // Railpack uses the key to namespace its internal BuildKit cache layers —
       // the same key on a repeat build lets BuildKit reuse cached steps.
-      const cacheKey = sourceCacheKey(deployment.source_type, deployment.source_ref);
+      const cacheKey = sourceCacheKey(
+        deployment.source_type,
+        deployment.source_ref,
+      );
       const existingCache = cacheRepo?.get(cacheKey) ?? null;
 
       if (existingCache) {
-        await logger.log(`[cache] HIT key=${cacheKey} hits=${existingCache.hit_count}`);
+        await logger.log(
+          `[cache] HIT key=${cacheKey} hits=${existingCache.hit_count}`,
+        );
       } else {
-        await logger.log(`[cache] MISS key=${cacheKey} — first build for this source`);
+        await logger.log(
+          `[cache] MISS key=${cacheKey} — first build for this source`,
+        );
       }
       cacheRepo?.upsert(cacheKey, cacheKey);
 
@@ -69,8 +77,8 @@ export function createRailpackBuilder(deps: RailpackBuilderDeps = {}): Builder {
       const buildCmd = `${command} build ${workspacePath} --name ${image_tag} --cache-key ${cacheKey} --progress=plain`;
 
       const result = await runStreaming(
-        'sh',
-        ['-c', buildCmd],
+        "sh",
+        ["-c", buildCmd],
         async (line) => {
           await logger.log(line);
         },
@@ -78,7 +86,9 @@ export function createRailpackBuilder(deps: RailpackBuilderDeps = {}): Builder {
         timeoutMs,
       );
       if (result.exitCode !== 0) {
-        throw new BuildFailedError(`railpack build exited with code ${result.exitCode}`);
+        throw new BuildFailedError(
+          `railpack build exited with code ${result.exitCode}`,
+        );
       }
       return { image_tag };
     },

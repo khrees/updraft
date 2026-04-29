@@ -6,6 +6,8 @@ import { createDeploymentSchema, redeployDeploymentSchema } from '../schemas.js'
 import { handleError, BadRequestError, ConflictError } from '../lib/errors.js';
 import { subscribe } from '../sse/broker.js';
 import { getPipelineQueue } from '../pipeline/index.js';
+import { createCaddyRouteRegistrar, type RouteRegistrar } from '../pipeline/caddy.js';
+import { createDockerRunner, type DockerRunner } from '../pipeline/runner.js';
 import { isTerminalDeploymentStatus, type SSEMessage } from '@updraft/shared-types';
 import { customAlphabet } from 'nanoid';
 import path from 'node:path';
@@ -17,6 +19,8 @@ const UPLOAD_DIR = process.env['UPLOAD_DIR'] ?? path.join(process.cwd(), 'data',
 
 export interface DeploymentsRouterOptions {
   enqueue?: (deploymentId: string) => void;
+  routeRegistrar?: RouteRegistrar;
+  runner?: DockerRunner;
 }
 
 export function createDeploymentsRouter(db: Database.Database, options: DeploymentsRouterOptions = {}) {
@@ -25,6 +29,8 @@ export function createDeploymentsRouter(db: Database.Database, options: Deployme
   const logs = createLogRepository(db);
   const builds = createBuildRepository(db);
   const enqueue = options.enqueue ?? ((id: string) => getPipelineQueue(db).enqueue(id));
+  const routeRegistrar = options.routeRegistrar ?? createCaddyRouteRegistrar();
+  const runner = options.runner ?? createDockerRunner();
 
   // POST /deployments — create and enqueue
   router.post('/', async (c) => {
@@ -104,6 +110,37 @@ export function createDeploymentsRouter(db: Database.Database, options: Deployme
       }
       const updated = deployments.updateStatus(deployment.id, 'cancelled');
       return c.json({ success: true, message: `Deployment ${updated.id} cancelled`, data: updated });
+    } catch (err) {
+      return handleError(c, err);
+    }
+  });
+
+  // DELETE /deployments/:id — delete a deployment, clean up all resources
+  router.delete('/:id', async (c) => {
+    try {
+      const deployment = deployments.getById(c.req.param('id'));
+      if (!deployment) throw new DeploymentNotFoundError(c.req.param('id'));
+
+      // Unregister Caddy route first so routing stops immediately.
+      await routeRegistrar.unregister(deployment.id);
+
+      // Stop and remove the container if it exists.
+      if (deployment.container_name) {
+        try {
+          const container = runner.docker.getContainer(deployment.container_name);
+          await container.stop({ t: 5 });
+          await container.remove();
+        } catch (err: unknown) {
+          const code = (err as { statusCode?: number }).statusCode;
+          if (code !== 404) {
+            console.warn(`[cleanup] Warning: could not remove container ${deployment.container_name}: ${(err as Error).message}`);
+          }
+        }
+      }
+
+      // Mark as cancelled and return.
+      const updated = deployments.updateStatus(deployment.id, 'cancelled');
+      return c.json({ success: true, message: `Deployment ${updated.id} deleted and resources cleaned up`, data: updated });
     } catch (err) {
       return handleError(c, err);
     }
