@@ -41,10 +41,16 @@ export async function runStreaming(
   stdoutReader.on('line', (line) => enqueueLine(line, 'stdout'));
   stderrReader.on('line', (line) => enqueueLine(line, 'stderr'));
 
+  const closeReaders = () => {
+    stdoutReader.close();
+    stderrReader.close();
+  };
+
   return new Promise<SpawnResult>((resolve, reject) => {
     let timeout: NodeJS.Timeout | undefined;
     if (timeoutMs) {
       timeout = setTimeout(() => {
+        closeReaders();
         child.kill('SIGTERM');
         setTimeout(() => {
           if (!child.killed) child.kill('SIGKILL');
@@ -55,12 +61,12 @@ export async function runStreaming(
 
     child.once('error', (err) => {
       if (timeout) clearTimeout(timeout);
+      closeReaders();
       reject(err);
     });
     child.once('close', (code) => {
       if (timeout) clearTimeout(timeout);
-      stdoutReader.close();
-      stderrReader.close();
+      closeReaders();
       Promise.allSettled(pending).then(() => resolve({ exitCode: code ?? 0 }));
     });
   });

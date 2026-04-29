@@ -4,7 +4,7 @@ services:
   caddy:
     image: caddy:2
     ports:
-      - "8080:80"
+      - "8081:80"
       - "2019:2019"
     volumes:
       - ./infra/caddy/caddy.json:/etc/caddy/caddy.json:ro
@@ -39,7 +39,7 @@ services:
     environment:
       PORT: "8088"
       DB_PATH: /data/updraft.db
-      PUBLIC_BASE_URL: "http://localhost:8080"
+      PUBLIC_BASE_URL: "http://localhost:8081"
       CADDY_ADMIN_URL: "http://caddy:2019"
       DEPLOYMENT_NETWORK: updraft_deployments
       APP_INTERNAL_PORT: "3000"

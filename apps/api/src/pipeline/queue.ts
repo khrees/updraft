@@ -71,7 +71,14 @@ export function createPipelineQueue(
     },
     async drain() {
       while (current || pending.length > 0) {
-        if (current) await current;
+        if (current) {
+          await current;
+        } else {
+          // pending has items but tick() hasn't created `current` yet (e.g. between
+          // the finally() clearing `current` and the recursive tick() running).
+          // Yield to the event loop so tick() can advance before we re-check.
+          await new Promise<void>((r) => setTimeout(r, 0));
+        }
       }
     },
     stop() {

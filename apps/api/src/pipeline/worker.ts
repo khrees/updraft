@@ -61,8 +61,14 @@ export async function runPipeline(deploymentId: string, deps: PipelineDeps): Pro
       return;
     }
 
+    // claim() writes status='building' before runPipeline is invoked, so the DB is
+    // already correct. If somehow the deployment is still 'pending' (e.g. called
+    // directly in tests), do the transition now. Either way, broadcast the SSE event
+    // so clients see the pending→building transition.
     if (deployment.status === 'pending') {
       await sysLogger.status('building');
+    } else {
+      broadcast(deploymentId, { type: 'status', data: { deployment_id: deploymentId, status: 'building' } });
     }
 
     const workspaceDir = path.join(workspaceRoot, deploymentId);
@@ -105,20 +111,20 @@ export async function runPipeline(deploymentId: string, deps: PipelineDeps): Pro
     await sysLogger.log(`Build complete: ${image_tag}`);
 
     await sysLogger.status('deploying');
-    const withImage = deployments.getById(deploymentId)!;
-    const { container_id, container_name, internal_port, previous_container_id, previous_container_name } = await runStage('deploy', () =>
+    const withImage = deployments.getById(deploymentId);
+    if (!withImage) throw new Error(`Deployment ${deploymentId} disappeared mid-pipeline`);
+    const { container_id, container_name, internal_port } = await runStage('deploy', () =>
       runner.run({ deployment: withImage, imageTag: image_tag, logger: loggerFor('deploy') }),
     );
     deployments.updateFields(deploymentId, {
       container_id,
       container_name,
       internal_port,
-      ...(previous_container_id ? { previous_container_id } : {}),
-      ...(previous_container_name ? { previous_container_name } : {}),
     });
     await sysLogger.log(`Container started: ${container_id}`);
 
-    const routedDeployment = deployments.getById(deploymentId)!;
+    const routedDeployment = deployments.getById(deploymentId);
+    if (!routedDeployment) throw new Error(`Deployment ${deploymentId} disappeared mid-pipeline`);
     const { route_path, live_url } = await runStage('system', async () =>
       routeAssigner.assign({ deployment: routedDeployment }),
     );

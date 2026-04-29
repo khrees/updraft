@@ -75,7 +75,11 @@ export function createUploadAcquirer(deps: UploadAcquirerDeps = {}): SourceAcqui
   const uploadDir = deps.uploadDir ?? process.env['UPLOAD_DIR'] ?? path.join(process.cwd(), 'data', 'uploads');
   return {
     async acquire({ deployment, workspaceDir, logger }) {
-      const archivePath = path.join(uploadDir, deployment.source_ref);
+      // Validate source_ref doesn't escape uploadDir.
+      const archivePath = path.resolve(uploadDir, deployment.source_ref);
+      if (!archivePath.startsWith(path.resolve(uploadDir) + path.sep)) {
+        throw new SourceAcquisitionError(`Invalid archive path: ${deployment.source_ref}`);
+      }
       if (!fs.existsSync(archivePath)) {
         throw new SourceAcquisitionError(`Upload archive not found at ${archivePath}`);
       }
@@ -86,15 +90,23 @@ export function createUploadAcquirer(deps: UploadAcquirerDeps = {}): SourceAcqui
       await logger.log(`Extracting ${deployment.source_ref}`);
       const result = await runStreaming(
         'tar',
-        ['-xf', archivePath, '-C', workspaceDir],
+        [
+          '-xf', archivePath,
+          '-C', workspaceDir,
+          '--no-absolute-filenames',  // rewrite absolute paths to relative
+          '--no-overwrite-dir',       // prevent replacing directories with symlinks
+        ],
         async (line) => {
           await logger.log(line);
         },
         deps.spawn ? { spawn: deps.spawn } : {},
       );
       if (result.exitCode !== 0) {
+        // Clean up the archive even on failure to avoid disk accumulation.
+        try { fs.unlinkSync(archivePath); } catch { /* best-effort */ }
         throw new SourceAcquisitionError(`tar extract exited with code ${result.exitCode}`);
       }
+      fs.unlinkSync(archivePath);
       return { workspacePath: workspaceDir };
     },
   };

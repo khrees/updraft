@@ -74,7 +74,9 @@ export function createCaddyRouteRegistrar(deps: CaddyRouteRegistrarDeps = {}): R
       const routeId = `dep-${deploymentId}`;
 
       // Delete any existing route with this ID first (idempotent — 404 is fine).
-      await fetch(`${adminUrl}/id/${routeId}`, { method: 'DELETE' }).catch(() => {});
+      await fetch(`${adminUrl}/id/${routeId}`, { method: 'DELETE' }).catch((err) => {
+        console.warn(`[caddy] Could not delete existing route ${routeId} before re-register:`, err);
+      });
 
       // Find the catch-all route index dynamically by looking for a match-all route
       // (path "/*" with no @id, or @id="frontend-route"). We insert before it so
@@ -113,7 +115,9 @@ export function createCaddyRouteRegistrar(deps: CaddyRouteRegistrarDeps = {}): R
     async unregister(deploymentId: string) {
       const routeId = `dep-${deploymentId}`;
       // Delete from Caddy's in-memory config. Idempotent — 404 if already gone.
-      await fetch(`${adminUrl}/id/${routeId}`, { method: 'DELETE' }).catch(() => {});
+      await fetch(`${adminUrl}/id/${routeId}`, { method: 'DELETE' }).catch((err) => {
+        console.warn(`[caddy] Could not delete route ${routeId}:`, err);
+      });
     },
   };
 }

@@ -41,14 +41,25 @@ export function createDeploymentsRouter(db: Database.Database, options: Deployme
       let source_ref: string;
 
       if (contentType.includes('multipart/form-data')) {
-        const form = await c.req.formData();
+        let form: FormData;
+        try {
+          form = await c.req.formData();
+        } catch {
+          return c.json({ success: false, message: 'Invalid multipart form data' }, 400);
+        }
         const archive = form.get('archive');
         if (!archive || !(archive instanceof File)) {
           return c.json({ success: false, message: 'multipart body must include an "archive" file field' }, 400);
         }
+        // Sanitize the filename: strip directory components and restrict to safe characters.
+        const safeName = path.basename(archive.name).replace(/[^a-zA-Z0-9._-]/g, '_');
         fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-        const filename = `${id}-${archive.name}`;
+        const filename = `${id}-${safeName}`;
         const dest = path.join(UPLOAD_DIR, filename);
+        // Guard against path traversal even after sanitization.
+        if (!dest.startsWith(path.resolve(UPLOAD_DIR) + path.sep)) {
+          return c.json({ success: false, message: 'Invalid archive filename' }, 400);
+        }
         fs.writeFileSync(dest, Buffer.from(await archive.arrayBuffer()));
         source_type = 'upload';
         source_ref = filename;
@@ -278,7 +289,9 @@ export function createDeploymentsRouter(db: Database.Database, options: Deployme
         }
       };
 
+      let aborted = false;
       stream.onAbort(() => {
+        aborted = true;
         unsubscribe();
         resolver?.();
       });
@@ -286,12 +299,13 @@ export function createDeploymentsRouter(db: Database.Database, options: Deployme
       try {
         const history = logs.listByDeployment(deploymentId, { afterSequence });
         for (const event of history) {
+          if (aborted) return;
           await stream.writeSSE({ id: String(event.sequence), event: 'log', data: JSON.stringify(event) });
           lastSequence = event.sequence;
         }
 
         await flushQueued();
-        if (settled) return;
+        if (settled || aborted) return;
 
         const current = deployments.getById(deploymentId);
         if (current && isTerminalDeploymentStatus(current.status)) {

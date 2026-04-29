@@ -136,8 +136,6 @@ export interface UpdateDeploymentInput {
   container_id?: string;
   container_name?: string;
   internal_port?: number;
-  previous_container_id?: string;
-  previous_container_name?: string;
   route_path?: string;
   live_url?: string;
 }
@@ -333,16 +331,11 @@ export interface RecordBuildInput {
 export function createBuildRepository(db: Database.Database) {
   return {
     record(input: RecordBuildInput): DeploymentBuild {
-      const existing = db.prepare(
-        `SELECT * FROM deployment_builds
-         WHERE source_type = ? AND source_ref = ? AND image_tag = ?`,
-      ).get(input.source_type, input.source_ref, input.image_tag) as DeploymentBuildRow | undefined;
-      if (existing) return rowToDeploymentBuild(existing);
-
       const id = nanoid();
       const created_at = new Date().toISOString();
+      // INSERT OR IGNORE is atomic — concurrent calls won't race to a UNIQUE violation.
       db.prepare(
-        `INSERT INTO deployment_builds (
+        `INSERT OR IGNORE INTO deployment_builds (
           id, source_type, source_ref, image_tag, build_method, created_by_deployment_id, created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
       ).run(
@@ -354,15 +347,10 @@ export function createBuildRepository(db: Database.Database) {
         input.created_by_deployment_id,
         created_at,
       );
-      return {
-        id,
-        source_type: input.source_type,
-        source_ref: input.source_ref,
-        image_tag: input.image_tag,
-        build_method: input.build_method,
-        created_by_deployment_id: input.created_by_deployment_id,
-        created_at,
-      };
+      const row = db.prepare(
+        `SELECT * FROM deployment_builds WHERE source_type = ? AND source_ref = ? AND image_tag = ?`,
+      ).get(input.source_type, input.source_ref, input.image_tag) as DeploymentBuildRow;
+      return rowToDeploymentBuild(row);
     },
 
     listForSource(source_type: DeploymentSourceType, source_ref: string): DeploymentBuild[] {
@@ -408,18 +396,19 @@ export function createBuildCacheRepository(db: Database.Database) {
 
     upsert(source_key: string, cache_ref: string): BuildCacheEntry {
       const now = new Date().toISOString();
-      const existing = this.get(source_key);
-      if (existing) {
-        db.prepare(
-          `UPDATE build_cache SET cache_ref = ?, last_used_at = ?, hit_count = hit_count + 1 WHERE source_key = ?`,
-        ).run(cache_ref, now, source_key);
-        return { ...existing, cache_ref, last_used_at: now, hit_count: existing.hit_count + 1 };
-      }
       const id = nanoid();
-      db.prepare(
-        `INSERT INTO build_cache (id, source_key, cache_ref, last_used_at, hit_count) VALUES (?, ?, ?, ?, 0)`,
-      ).run(id, source_key, cache_ref, now);
-      return { id, source_key, cache_ref, last_used_at: now, hit_count: 0 };
+      const run = db.transaction(() => {
+        db.prepare(
+          `INSERT INTO build_cache (id, source_key, cache_ref, last_used_at, hit_count)
+           VALUES (?, ?, ?, ?, 0)
+           ON CONFLICT(source_key) DO UPDATE SET
+             cache_ref    = excluded.cache_ref,
+             last_used_at = excluded.last_used_at,
+             hit_count    = hit_count + 1`,
+        ).run(id, source_key, cache_ref, now);
+        return db.prepare(`SELECT * FROM build_cache WHERE source_key = ?`).get(source_key) as BuildCacheEntry;
+      });
+      return run();
     },
   };
 }

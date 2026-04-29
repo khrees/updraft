@@ -8,7 +8,7 @@ cd updraft
 docker compose up --build
 ```
 
-Open **http://localhost:8080**. No env vars needed — sensible defaults are baked in. To try it immediately, use the Upload tab and select `apps/sample-app/` — the browser packages it into a tar archive client-side, no manual steps required. Or paste any public Git URL; Railpack detects the framework automatically.
+Open **http://localhost:8081**. No env vars needed — sensible defaults are baked in. To try it immediately, use the Upload tab and select `apps/sample-app/` — the browser packages it into a tar archive client-side, no manual steps required. Or paste any public Git URL; Railpack detects the framework automatically.
 
 ---
 
@@ -16,7 +16,7 @@ Open **http://localhost:8080**. No env vars needed — sensible defaults are bak
 
 ```
 Browser
-  └─► Caddy :8080
+  └─► Caddy :8081
         ├─► /api/*      → Hono API :8088
         ├─► /d/:id/*    → dep-<id>:3000   (injected per deployment)
         └─► /*          → Vite frontend :3000
@@ -98,7 +98,7 @@ interface Deployment {
   image_tag?: string;           // set once Railpack finishes
   container_name?: string;      // dep-<id> — the stable name Caddy routes to
   route_path?: string;          // /d/<id>
-  live_url?: string;            // http://localhost:8080/d/<id>
+  live_url?: string;            // http://localhost:8081/d/<id>
   created_at: string;
   updated_at: string;
 }
@@ -114,7 +114,7 @@ Everything has a default. Nothing needs to be set to run locally.
 |----------|---------|-------|
 | `PORT` | `8088` | API listen port |
 | `DB_PATH` | `/data/updraft.db` | SQLite file |
-| `PUBLIC_BASE_URL` | `http://localhost:8080` | Used to construct `live_url` |
+| `PUBLIC_BASE_URL` | `http://localhost:8081` | Used to construct `live_url` |
 | `CADDY_ADMIN_URL` | `http://caddy:2019` | Caddy Admin API |
 | `DEPLOYMENT_NETWORK` | `updraft_deployments` | Docker network for deployed containers |
 | `APP_INTERNAL_PORT` | `3000` | Port deployed containers must listen on |

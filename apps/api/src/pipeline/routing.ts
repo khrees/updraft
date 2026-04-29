@@ -18,7 +18,7 @@ export interface PathRouteAssignerDeps {
 }
 
 export function createPathRouteAssigner(deps: PathRouteAssignerDeps = {}): RouteAssigner {
-  const baseUrl = (deps.publicBaseUrl ?? process.env['PUBLIC_BASE_URL'] ?? 'http://localhost:8080').replace(/\/+$/, '');
+  const baseUrl = (deps.publicBaseUrl ?? process.env['PUBLIC_BASE_URL'] ?? 'http://localhost:8081').replace(/\/+$/, '');
   return {
     assign({ deployment }) {
       if (!deployment.container_name || !deployment.internal_port) {

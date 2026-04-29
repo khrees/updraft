@@ -15,10 +15,10 @@ const deployment: Deployment = {
 
 describe('path route assigner', () => {
   it('builds a path-based live url from the configured base', () => {
-    const assigner = createPathRouteAssigner({ publicBaseUrl: 'http://localhost:8080' });
+    const assigner = createPathRouteAssigner({ publicBaseUrl: 'http://localhost:8081' });
     const { route_path, live_url } = assigner.assign({ deployment });
     expect(route_path).toBe('/d/abc123');
-    expect(live_url).toBe('http://localhost:8080/d/abc123');
+    expect(live_url).toBe('http://localhost:8081/d/abc123');
   });
 
   it('strips trailing slashes from the base url', () => {
